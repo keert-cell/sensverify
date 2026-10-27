@@ -469,10 +469,12 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap');
 
-/* Clean Dark Purple Background */
+/* Clean Dark Purple Background with Subtle Radial Gradients */
 .stApp, [data-testid="stAppViewContainer"] {
-    background-color: #2D1B4E !important;
-    background-image: none !important;
+    background: radial-gradient(circle at 20% 30%, rgba(157, 78, 221, 0.15) 0%, transparent 60%),
+                radial-gradient(circle at 80% 70%, rgba(0, 212, 255, 0.10) 0%, transparent 60%),
+                #2D1B4E !important;
+    background-attachment: fixed !important;
     color: #FFFFFF !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
