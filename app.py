@@ -456,14 +456,16 @@ TRANSLATIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS STYLING: Full Neon Purple & Magenta Glow Theme
+# CSS STYLING: Deep Obsidian Dark + Intense Neon Purple & Magenta Glow
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
 .stApp, [data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at 20% 30%, #9D4EDD88, transparent), radial-gradient(circle at 80% 70%, #FF00FF88, transparent), #2D1B4E !important;
+    background: radial-gradient(circle at 15% 20%, rgba(157, 78, 221, 0.25) 0%, transparent 45%),
+                radial-gradient(circle at 85% 80%, rgba(255, 0, 255, 0.18) 0%, transparent 45%),
+                #0A0413 !important;
     background-attachment: fixed !important;
     color: #FFFFFF !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
@@ -488,27 +490,28 @@ h1, h2, h3, h4, .cyber-title {
 }
 .cyber-sub {
     text-align: center;
-    color: #E0AAFF;
+    color: #D8B4FE;
     font-size: 0.95rem;
     margin-bottom: 1.5rem;
     text-shadow: 0 0 8px rgba(157, 78, 221, 0.6);
 }
 
-/* All Cards with Full Neon Glow & Blur */
+/* Deep Obsidian Glassmorphic Cards with Neon Shadow */
 .stat-card, .score-card, div[data-testid="stForm"], .red-alert, .green-safe {
-    box-shadow: 0 0 20px rgba(157, 78, 221, 0.5), 0 0 40px rgba(255, 0, 255, 0.3) !important;
-    border: 1px solid rgba(224, 163, 255, 0.3) !important;
-    backdrop-filter: blur(20px) !important;
-    background: rgba(74, 44, 122, 0.65) !important;
+    box-shadow: 0 0 22px rgba(157, 78, 221, 0.45), 0 10px 40px rgba(0, 0, 0, 0.85) !important;
+    border: 1px solid rgba(224, 163, 255, 0.25) !important;
+    backdrop-filter: blur(24px) !important;
+    background: rgba(18, 9, 34, 0.82) !important;
     border-radius: 14px !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-/* Card Glow Intensify on Hover Animation */
+/* Card Glow Intensify on Hover */
 .stat-card:hover, .score-card:hover, div[data-testid="stForm"]:hover, .red-alert:hover, .green-safe:hover {
     transform: translateY(-3px) scale(1.01) !important;
-    box-shadow: 0 0 30px rgba(157, 78, 221, 0.85), 0 0 60px rgba(255, 0, 255, 0.65) !important;
-    border-color: rgba(255, 0, 255, 0.6) !important;
+    box-shadow: 0 0 35px rgba(157, 78, 221, 0.85), 0 0 65px rgba(255, 0, 255, 0.6) !important;
+    border-color: rgba(255, 0, 255, 0.65) !important;
+    background: rgba(24, 12, 44, 0.92) !important;
 }
 
 .stat-card {
@@ -523,7 +526,7 @@ h1, h2, h3, h4, .cyber-title {
     font-family: 'JetBrains Mono', monospace;
 }
 .stat-label {
-    color: #E0AAFF;
+    color: #C084FC;
     font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -555,20 +558,20 @@ h1, h2, h3, h4, .cyber-title {
 
 /* Threat Alert Cards */
 .red-alert {
-    background: rgba(239, 68, 68, 0.2) !important;
+    background: rgba(35, 10, 22, 0.85) !important;
     border: 1px solid #EF4444 !important;
     border-left: 5px solid #EF4444 !important;
     padding: 1.3rem;
     margin: 0.8rem 0;
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(255, 0, 255, 0.3) !important;
+    box-shadow: 0 0 22px rgba(239, 68, 68, 0.5), 0 10px 40px rgba(0, 0, 0, 0.8) !important;
 }
 .green-safe {
-    background: rgba(16, 185, 129, 0.2) !important;
+    background: rgba(8, 30, 22, 0.85) !important;
     border: 1px solid #10B981 !important;
     border-left: 5px solid #10B981 !important;
     padding: 1.3rem;
     margin: 0.8rem 0;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(157, 78, 221, 0.3) !important;
+    box-shadow: 0 0 22px rgba(16, 185, 129, 0.5), 0 10px 40px rgba(0, 0, 0, 0.8) !important;
 }
 
 /* Badges */
@@ -581,16 +584,16 @@ h1, h2, h3, h4, .cyber-title {
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {
-    background: rgba(74, 44, 122, 0.6) !important;
+    background: rgba(18, 9, 34, 0.8) !important;
     backdrop-filter: blur(20px) !important;
     border-radius: 12px !important;
     padding: 6px !important;
     gap: 6px !important;
-    border: 1px solid rgba(224, 163, 255, 0.3) !important;
-    box-shadow: 0 0 20px rgba(157, 78, 221, 0.4) !important;
+    border: 1px solid rgba(224, 163, 255, 0.25) !important;
+    box-shadow: 0 0 20px rgba(157, 78, 221, 0.3) !important;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #E0AAFF !important;
+    color: #D8B4FE !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
     padding: 8px 16px !important;
@@ -603,16 +606,16 @@ h1, h2, h3, h4, .cyber-title {
     box-shadow: 0 0 20px rgba(255, 0, 255, 0.6) !important;
 }
 
-/* Form Containers */
+/* Deep Obsidian Inputs */
 div[data-testid="stForm"] {
     padding: 1.5rem !important;
 }
 .stTextInput>div>input, .stTextArea>div>textarea {
-    background: #1C1032 !important;
+    background: #0E051C !important;
     color: #FFFFFF !important;
-    border: 1px solid rgba(224, 163, 255, 0.35) !important;
+    border: 1px solid rgba(224, 163, 255, 0.3) !important;
     border-radius: 8px !important;
-    box-shadow: 0 0 10px rgba(157, 78, 221, 0.2) inset !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.6) inset !important;
     transition: all 0.3s ease !important;
 }
 .stTextInput>div>input:focus, .stTextArea>div>textarea:focus {
@@ -645,12 +648,12 @@ div[data-testid="stForm"] {
 
 .footer-bar {
     text-align: center;
-    color: #C77DFF;
+    color: #C084FC;
     font-size: 0.8rem;
     margin-top: 3.5rem;
     padding: 1.2rem;
-    border-top: 1px solid rgba(157, 78, 221, 0.35);
-    text-shadow: 0 0 10px rgba(157, 78, 221, 0.5);
+    border-top: 1px solid rgba(157, 78, 221, 0.25);
+    text-shadow: 0 0 10px rgba(157, 78, 221, 0.4);
 }
 </style>
 """, unsafe_allow_html=True)
