@@ -1,19 +1,19 @@
 """
 ==============================================================================
-SENSVERIFY v6.0 — UNIVERSAL FAKE DETECTOR SUITE
+SENSVERIFY v7.0 — UNIVERSAL THREAT DEFENSE ENGINE
 ==============================================================================
-Features:
-1. Real SIM Connect API (?sms=<text>&user_phone=<phone>)
-2. Authentication (Login / Signup with SHA-256 password hashing)
-3. Dashboard Analytics (Score 92/100, 7-day threat chart, high/med/low alerts)
-4. SMS Scanner (Scam / Genuine OTP + PDF report)
-5. Email Scanner (Phishing detection, suspicious sender verification)
-6. Call & Voice Scam Detector (Transcript NLP + AI Voice Clone Audio Analysis)
-7. URL & QR Code Scanner (Phishing URLs + QR Code Image Inspection)
-8. Multi-Language Support (English / తెలుగు)
-9. Automated PDF Threat Incident Report Generator (fpdf2)
-10. AI Chatbot Assistant ("Ask SensVerify")
-11. Admin & Access Tracking (logs saved in data/)
+New in v7.0:
+- Multi-step OTP Verification before Password Setup (Signup flow)
+- Dual Sign-in: Standard Password OR Login with SIM OTP
+- Theme updated: Deep Purple (#2D1B4E), Violet (#4A2C7A) & Electric Cyan/Purple (#9D4EDD / #00D4FF)
+- All 6 Core Features Maintained:
+  1. Dashboard Analytics (Score 92/100, 7-Day Chart, Threat Badges)
+  2. URL & QR Code Scanner (Phishing domains, QR image decoder)
+  3. Voice Call & AI Voice Clone Detector (Audio upload + Transcript NLP)
+  4. Multi-Language: English & తెలుగు
+  5. Forensic Threat Incident PDF Report Generator (fpdf2)
+  6. AI Chatbot Assistant ("Ask SensVerify")
+  7. Real SIM Connect API (?sms=&user_phone=)
 ==============================================================================
 """
 
@@ -50,7 +50,7 @@ MODEL_PATH = os.path.join(BASE_DIR, "models", "model.pkl")
 TFIDF_PATH = os.path.join(BASE_DIR, "models", "tfidf.pkl")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DATA PERSISTENCE HELPERS
+# PERSISTENCE HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 def load_json(path):
     if os.path.exists(path):
@@ -97,7 +97,7 @@ def find_user(phone):
 
 def signup_user(name, phone, email, password) -> tuple[bool, str]:
     users = load_users()
-    if any(str(u.get("phone")).strip() == phone.strip() for u in users):
+    if any(str(u.get("phone")).strip() == str(phone).strip() for u in users):
         return False, "Phone number is already enrolled. Please login."
     users.append({
         "name": name.strip(),
@@ -106,17 +106,18 @@ def signup_user(name, phone, email, password) -> tuple[bool, str]:
         "password": hash_pw(password),
         "carrier": detect_carrier(phone.strip()),
         "joined_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "otp_verified": True,
         "status": "Protected ✅"
     })
     save_users(users)
-    return True, "Account activated successfully! You can now log in."
+    return True, "Account enrolled and verified! Please log in."
 
 def login_user(phone, password) -> tuple[bool, str, dict | None]:
     user = find_user(phone)
     if not user:
-        return False, "User not found. Please create an account first.", None
+        return False, "User phone not registered. Please enroll first.", None
     if user.get("password") != hash_pw(password):
-        return False, "Incorrect security credentials.", None
+        return False, "Incorrect password. Try again or login with OTP.", None
     return True, f"Welcome back, {user['name']}!", user
 
 def log_access(user):
@@ -130,82 +131,82 @@ def log_access(user):
     })
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PDF REPORT GENERATOR (fpdf2)
+# PDF FORENSIC REPORT GENERATOR (fpdf2)
 # ══════════════════════════════════════════════════════════════════════════════
 def generate_pdf_report(scan_type, content, result_dict, user_phone):
     pdf = FPDF()
     pdf.add_page()
     
-    # Header styling
-    pdf.set_fill_color(10, 25, 47)
+    # Header Banner in Theme Violet
+    pdf.set_fill_color(45, 27, 78)
     pdf.rect(0, 0, 210, 38, 'F')
     
-    pdf.set_text_color(0, 212, 255)
+    pdf.set_text_color(157, 78, 221)
     pdf.set_font("Helvetica", "B", 20)
     pdf.set_xy(12, 10)
-    pdf.cell(0, 10, "SENSVERIFY THREAT INTELLIGENCE REPORT", ln=True)
+    pdf.cell(0, 10, "SENSVERIFY FORENSIC INCIDENT REPORT", ln=True)
     
-    pdf.set_text_color(200, 225, 255)
+    pdf.set_text_color(225, 205, 255)
     pdf.set_font("Helvetica", size=9)
     pdf.set_xy(12, 22)
     pdf.cell(0, 6, "Autonomous Cyber Threat Detection & Forensic Sensor Analysis", ln=True)
     
     pdf.set_xy(12, 45)
-    pdf.set_text_color(30, 41, 59)
+    pdf.set_text_color(45, 27, 78)
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "1. Incident Overview", ln=True)
+    pdf.cell(0, 8, "1. Target & Telemetry Data", ln=True)
     
     pdf.set_font("Helvetica", size=10)
     pdf.set_text_color(71, 85, 105)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-    pdf.cell(45, 6, "Target Identifier:", 0); pdf.cell(0, 6, str(user_phone), ln=True)
-    pdf.cell(45, 6, "Scan Category:", 0); pdf.cell(0, 6, str(scan_type), ln=True)
-    pdf.cell(45, 6, "Incident Timestamp:", 0); pdf.cell(0, 6, now_str, ln=True)
-    pdf.cell(45, 6, "Threat Status:", 0)
+    pdf.cell(45, 6, "Monitored Phone:", 0); pdf.cell(0, 6, str(user_phone), ln=True)
+    pdf.cell(45, 6, "Forensic Vector:", 0); pdf.cell(0, 6, str(scan_type), ln=True)
+    pdf.cell(45, 6, "Timestamp:", 0); pdf.cell(0, 6, now_str, ln=True)
+    pdf.cell(45, 6, "Verification State:", 0)
     
     is_threat = result_dict.get("is_threat", False)
     if is_threat:
         pdf.set_text_color(220, 38, 38)
-        pdf.cell(0, 6, f"MALICIOUS / THREAT DETECTED ({result_dict.get('confidence', 95)}% Confidence)", ln=True)
+        pdf.cell(0, 6, f"MALICIOUS THREAT DETECTED ({result_dict.get('confidence', 95)}% Confidence)", ln=True)
     else:
         pdf.set_text_color(22, 163, 74)
-        pdf.cell(0, 6, f"CLEAN / VERIFIED SAFE ({result_dict.get('confidence', 95)}% Confidence)", ln=True)
+        pdf.cell(0, 6, f"AUTHENTIC / SAFE ({result_dict.get('confidence', 95)}% Confidence)", ln=True)
         
     pdf.ln(4)
-    pdf.set_text_color(30, 41, 59)
+    pdf.set_text_color(45, 27, 78)
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "2. Forensic Findings & Analysis", ln=True)
+    pdf.cell(0, 8, "2. Threat Analysis Findings", ln=True)
     
     pdf.set_font("Helvetica", size=10)
     pdf.set_text_color(71, 85, 105)
     headline_clean = str(result_dict.get('headline', '')).encode('latin-1', 'replace').decode('latin-1')
-    reason_clean = str(result_dict.get('reason', '')).encode('latin-1', 'replace').decode('latin-1')
-    action_clean = str(result_dict.get('action', '')).encode('latin-1', 'replace').decode('latin-1')
-    content_clean = str(content[:400]).encode('latin-1', 'replace').decode('latin-1')
+    reason_clean   = str(result_dict.get('reason', '')).encode('latin-1', 'replace').decode('latin-1')
+    action_clean   = str(result_dict.get('action', '')).encode('latin-1', 'replace').decode('latin-1')
+    content_clean  = str(content[:400]).encode('latin-1', 'replace').decode('latin-1')
     
-    pdf.multi_cell(0, 6, f"Summary: {headline_clean}")
-    pdf.multi_cell(0, 6, f"Reason: {reason_clean}")
-    pdf.multi_cell(0, 6, f"Recommended Action: {action_clean}")
+    pdf.multi_cell(0, 6, f"Verdict: {headline_clean}")
+    pdf.multi_cell(0, 6, f"Forensic Detail: {reason_clean}")
+    pdf.multi_cell(0, 6, f"Recommended Mitigation: {action_clean}")
     
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 12)
-    pdf.set_text_color(30, 41, 59)
+    pdf.set_text_color(45, 27, 78)
     pdf.cell(0, 8, "3. Raw Intercepted Payload", ln=True)
     
-    pdf.set_fill_color(241, 245, 249)
+    pdf.set_fill_color(243, 232, 255)
     pdf.set_font("Courier", size=8)
-    pdf.set_text_color(15, 23, 42)
+    pdf.set_text_color(45, 27, 78)
     pdf.multi_cell(0, 5, content_clean, fill=True)
     
     pdf.ln(8)
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(148, 163, 184)
-    pdf.multi_cell(0, 5, "This verification report was generated autonomously by SensVerify AI Defense Engine. Validated against Indian IT Act 66D/66E and CERT-In Cyber Threat Advisories.")
+    pdf.multi_cell(0, 5, "This forensic incident advisory was verified autonomously by SensVerify AI Defense Suite in adherence to IT Act 66D & CERT-In cyber advisory parameters.")
     
     return bytes(pdf.output())
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ML MODEL FALLBACK
+# ML MODEL ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def load_ml():
@@ -401,7 +402,7 @@ if "sms" in params and "user_phone" in params:
     result = scan_sms(params["sms"])
     result.update({
         "phone": params["user_phone"],
-        "api": "SensVerify Real SIM Connect Engine v6.0",
+        "api": "SensVerify Real SIM Connect Engine v7.0",
         "endpoint": "?sms=&user_phone="
     })
     append_log(SCAN_LOG, result)
@@ -409,7 +410,7 @@ if "sms" in params and "user_phone" in params:
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MULTI-LANGUAGE DICTIONARY (English & తెలుగు)
+# MULTI-LANGUAGE TRANSLATIONS
 # ══════════════════════════════════════════════════════════════════════════════
 TRANSLATIONS = {
     "English": {
@@ -427,10 +428,8 @@ TRANSLATIONS = {
         "logout": "Logout",
         "scam_alert_badge": "Scam Alerts Feed",
         "security_score": "Shield Security Index",
-        "risk_level": "Autonomous Threat Posture",
-        "scan_now": "Initiate AI Scan",
         "download_pdf": "📄 Download Threat Incident Report (PDF)",
-        "voice_upload": "Upload Call Audio Recording (Inspect Synthetic Clones)",
+        "voice_upload": "Upload Call Recording (AI Voice Cloner Analysis)",
         "qr_upload": "Upload QR Image File",
         "chat_placeholder": "Ask SensVerify about any scam, suspicious message or OTP..."
     },
@@ -449,8 +448,6 @@ TRANSLATIONS = {
         "logout": "లాగౌట్",
         "scam_alert_badge": "లైవ్ ముప్పు హెచ్చరికలు",
         "security_score": "భద్రతా సూచిక",
-        "risk_level": "రక్షణ సామర్థ్యం",
-        "scan_now": "ఇప్పుడే స్కాన్ చేయండి",
         "download_pdf": "📄 ఫోరెన్సిక్ రిపోర్ట్ డౌన్‌లోడ్ చేసుకోండి (PDF)",
         "voice_upload": "కాల్ ఆడియో రికార్డింగ్ అప్‌లోడ్ చేయండి (డీప్‌ఫేక్ వాయిస్ తనిఖీ)",
         "qr_upload": "QR కోడ్ ఫోటో అప్‌లోడ్ చేయండి",
@@ -459,18 +456,18 @@ TRANSLATIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS STYLING: Dark Cyber #0A192F + Card #1A2A4A + Cyan #00D4FF Glassmorphism
+# CSS STYLING: Deep Purple (#2D1B4E) + Violet (#4A2C7A) + Neon Violet (#9D4EDD)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
 .stApp, [data-testid="stAppViewContainer"] {
-    background-color: #0A192F !important;
+    background-color: #2D1B4E !important;
     background-image: 
-        radial-gradient(at 0% 0%, rgba(0, 212, 255, 0.08) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(123, 97, 255, 0.08) 0px, transparent 50%) !important;
-    color: #E2E8F0 !important;
+        radial-gradient(at 0% 0%, rgba(157, 78, 221, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(0, 212, 255, 0.12) 0px, transparent 50%) !important;
+    color: #FFFFFF !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
@@ -480,7 +477,7 @@ st.markdown("""
 .cyber-title {
     font-size: 2.3rem;
     font-weight: 800;
-    background: linear-gradient(90deg, #00D4FF 0%, #38BDF8 50%, #818CF8 100%);
+    background: linear-gradient(90deg, #9D4EDD 0%, #C77DFF 50%, #00D4FF 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-align: center;
@@ -489,16 +486,16 @@ st.markdown("""
 }
 .cyber-sub {
     text-align: center;
-    color: #94A3B8;
+    color: #E0AAFF;
     font-size: 0.95rem;
     margin-bottom: 1.5rem;
 }
 
-/* Glassmorphism Stat Cards */
+/* Glassmorphism Stat Cards in #4A2C7A */
 .stat-card {
-    background: rgba(26, 42, 74, 0.65);
+    background: rgba(74, 44, 122, 0.65);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 212, 255, 0.22);
+    border: 1px solid rgba(157, 78, 221, 0.35);
     border-radius: 14px;
     padding: 1.2rem;
     text-align: center;
@@ -507,11 +504,11 @@ st.markdown("""
 .stat-number {
     font-size: 2.1rem;
     font-weight: 800;
-    color: #00D4FF;
+    color: #C77DFF;
     font-family: 'JetBrains Mono', monospace;
 }
 .stat-label {
-    color: #94A3B8;
+    color: #E0AAFF;
     font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -521,12 +518,12 @@ st.markdown("""
 
 /* Security Score Dial */
 .score-card {
-    background: linear-gradient(135deg, rgba(26, 42, 74, 0.9), rgba(15, 23, 42, 0.9));
-    border: 1px solid rgba(0, 212, 255, 0.35);
+    background: linear-gradient(135deg, rgba(74, 44, 122, 0.9), rgba(45, 27, 78, 0.9));
+    border: 1px solid rgba(157, 78, 221, 0.45);
     border-radius: 16px;
     padding: 1.5rem;
     text-align: center;
-    box-shadow: 0 0 30px rgba(0, 212, 255, 0.12);
+    box-shadow: 0 0 30px rgba(157, 78, 221, 0.2);
 }
 .score-circle {
     display: inline-flex;
@@ -535,18 +532,18 @@ st.markdown("""
     width: 130px;
     height: 130px;
     border-radius: 50%;
-    border: 6px solid #00D4FF;
-    box-shadow: 0 0 25px rgba(0, 212, 255, 0.4);
+    border: 6px solid #9D4EDD;
+    box-shadow: 0 0 25px rgba(157, 78, 221, 0.5);
     font-size: 2.4rem;
     font-weight: 800;
-    color: #F8FAFC;
+    color: #FFFFFF;
     font-family: 'JetBrains Mono', monospace;
     margin: 0.8rem auto;
 }
 
 /* Threat Alert Cards */
 .red-alert {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(239, 68, 68, 0.15);
     border: 1px solid #EF4444;
     border-left: 5px solid #EF4444;
     border-radius: 12px;
@@ -555,7 +552,7 @@ st.markdown("""
     box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
 }
 .green-safe {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(16, 185, 129, 0.15);
     border: 1px solid #10B981;
     border-left: 5px solid #10B981;
     border-radius: 12px;
@@ -563,59 +560,52 @@ st.markdown("""
     margin: 0.8rem 0;
     box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
 }
-.yellow-warn {
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid #F59E0B;
-    border-left: 5px solid #F59E0B;
-    border-radius: 12px;
-    padding: 1.3rem;
-    margin: 0.8rem 0;
-}
 
 /* Badges */
-.badge-high { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
-.badge-med { background: rgba(245, 158, 11, 0.2); color: #F59E0B; border: 1px solid #F59E0B; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
-.badge-low { background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-high { background: rgba(239, 68, 68, 0.25); color: #FCA5A5; border: 1px solid #EF4444; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-med { background: rgba(245, 158, 11, 0.25); color: #FDE68A; border: 1px solid #F59E0B; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-low { background: rgba(16, 185, 129, 0.25); color: #6EE7B7; border: 1px solid #10B981; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
 
-.pill-cyan { background: rgba(0, 212, 255, 0.15); color: #00D4FF; border: 1px solid #00D4FF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
+.pill-cyan { background: rgba(0, 212, 255, 0.2); color: #00D4FF; border: 1px solid #00D4FF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
+.pill-purple { background: rgba(157, 78, 221, 0.25); color: #E0AAFF; border: 1px solid #9D4EDD; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {
-    background: rgba(26, 42, 74, 0.5) !important;
+    background: rgba(74, 44, 122, 0.5) !important;
     backdrop-filter: blur(10px) !important;
     border-radius: 12px !important;
     padding: 6px !important;
     gap: 6px !important;
-    border: 1px solid rgba(0, 212, 255, 0.18) !important;
+    border: 1px solid rgba(157, 78, 221, 0.3) !important;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #94A3B8 !important;
+    color: #E0AAFF !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
     padding: 8px 16px !important;
 }
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(90deg, #00D4FF, #38BDF8) !important;
-    color: #0A192F !important;
+    background: linear-gradient(90deg, #9D4EDD, #C77DFF) !important;
+    color: #FFFFFF !important;
     font-weight: 700 !important;
 }
 
 /* Form Containers */
 div[data-testid="stForm"] {
-    background: rgba(26, 42, 74, 0.5) !important;
-    border: 1px solid rgba(0, 212, 255, 0.22) !important;
+    background: rgba(74, 44, 122, 0.5) !important;
+    border: 1px solid rgba(157, 78, 221, 0.35) !important;
     border-radius: 14px !important;
     padding: 1.5rem !important;
 }
 .stTextInput>div>input, .stTextArea>div>textarea {
-    background: #0B132B !important;
-    color: #F8FAFC !important;
-    border: 1px solid rgba(0, 212, 255, 0.3) !important;
+    background: #1C1032 !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(157, 78, 221, 0.45) !important;
     border-radius: 8px !important;
 }
 .stButton>button[kind="primary"] {
-    background: linear-gradient(90deg, #00D4FF 0%, #7B61FF 100%) !important;
-    color: #0A192F !important;
+    background: linear-gradient(90deg, #9D4EDD 0%, #00D4FF 100%) !important;
+    color: #FFFFFF !important;
     font-weight: 700 !important;
     border: none !important;
     border-radius: 8px !important;
@@ -623,11 +613,11 @@ div[data-testid="stForm"] {
 
 .footer-bar {
     text-align: center;
-    color: #64748B;
+    color: #C77DFF;
     font-size: 0.8rem;
     margin-top: 3.5rem;
     padding: 1.2rem;
-    border-top: 1px solid rgba(0, 212, 255, 0.15);
+    border-top: 1px solid rgba(157, 78, 221, 0.25);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -642,14 +632,21 @@ defaults = {
     "chat_history": [
         {"role": "assistant", "content": "Hello! I am SensVerify Cyber Defense Assistant. Ask me about any suspicious SMS, parcel fee scams, OTP safety, or bank verification calls."}
     ],
-    "sms_feed": []
+    # Signup Multi-Step OTP state
+    "signup_stage": 1,           # 1: Info, 2: OTP verify, 3: Set Password
+    "signup_data": {},
+    "signup_otp": "",
+    # Login with OTP state
+    "login_otp_sent": False,
+    "login_otp_code": "",
+    "login_otp_phone": ""
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ██████████████████  LOGIN & REGISTRATION PORTAL  ████████████████████████████
+# ██████████████████  LOGIN & ENROLLMENT PORTAL (WITH OTP)  ████████████████████
 # ══════════════════════════════════════════════════════════════════════════════
 if not st.session_state.logged_in:
     top_col1, top_col2 = st.columns([4, 1])
@@ -673,54 +670,155 @@ if not st.session_state.logged_in:
         sc3.markdown(f'<div class="stat-card"><div class="stat-number">{threats_count + 72}</div><div class="stat-label">Threats Blocked</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        tab_login, tab_signup = st.tabs(["🔑 Sign In", "📝 Enroll Device"])
+        tab_login, tab_signup = st.tabs(["🔑 Sign In", "📝 Enroll Device (OTP Verification)"])
 
+        # ── TAB 1: LOGIN (Password OR SIM OTP) ──
         with tab_login:
-            with st.form("signin_form"):
-                st.markdown("#### Enter Enrolled Credentials")
-                login_phone = st.text_input("📱 Mobile Phone Number", placeholder="e.g. 9876543210")
-                login_pass  = st.text_input("🔒 Security Password", type="password")
-                btn_login   = st.form_submit_button("Authenticate & Enter Defense Grid →", type="primary", use_container_width=True)
+            login_method = st.radio("Choose Sign-in Method:", ["🔒 Password Authentication", "📲 One-Time Password (SIM OTP)"], horizontal=True)
 
-            if btn_login:
-                if login_phone.strip() and login_pass.strip():
-                    ok, msg, usr = login_user(login_phone, login_pass)
-                    if ok:
-                        st.session_state.logged_in = True
-                        st.session_state.current_user = usr
-                        log_access(usr)
-                        st.success(msg)
-                        st.rerun()
+            if login_method == "🔒 Password Authentication":
+                with st.form("signin_pwd_form"):
+                    st.markdown("#### Enter Enrolled Credentials")
+                    login_phone = st.text_input("📱 Mobile Phone Number", placeholder="e.g. 9876543210")
+                    login_pass  = st.text_input("🔒 Security Password", type="password")
+                    btn_login   = st.form_submit_button("Authenticate & Enter Defense Grid →", type="primary", use_container_width=True)
+
+                if btn_login:
+                    if login_phone.strip() and login_pass.strip():
+                        ok, msg, usr = login_user(login_phone, login_pass)
+                        if ok:
+                            st.session_state.logged_in = True
+                            st.session_state.current_user = usr
+                            log_access(usr)
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
                     else:
-                        st.error(msg)
-                else:
-                    st.warning("Please supply both phone number and password.")
+                        st.warning("Please supply both telephone number and password.")
 
+            else:
+                # Login with OTP flow
+                st.markdown("#### 📲 Instant SIM OTP Sign-in")
+                lp_phone = st.text_input("📱 Enrolled Mobile Phone Number", placeholder="e.g. 9876543210", key="login_otp_ph_in")
+                
+                col_lotp1, col_lotp2 = st.columns([1, 1])
+                with col_lotp1:
+                    if st.button("📩 Send Login OTP", type="primary", use_container_width=True):
+                        if lp_phone.strip():
+                            user_chk = find_user(lp_phone.strip())
+                            if user_chk:
+                                gen_otp = f"{random.randint(100000, 999999)}"
+                                st.session_state.login_otp_code = gen_otp
+                                st.session_state.login_otp_phone = lp_phone.strip()
+                                st.session_state.login_otp_sent = True
+                                st.success("OTP Dispatched via Telephony Sensor!")
+                            else:
+                                st.error("This phone number is not registered yet. Please Enroll Device first.")
+                        else:
+                            st.warning("Please enter your phone number first.")
+
+                if st.session_state.login_otp_sent:
+                    st.info(f"🔔 **Demo SIM Sensor Interception:** Login OTP is **{st.session_state.login_otp_code}** *(In production, delivered directly to device SIM)*")
+                    entered_l_otp = st.text_input("Enter 6-Digit Login OTP", max_chars=6, key="login_entered_otp")
+                    if st.button("Verify OTP & Log In →", use_container_width=True):
+                        if entered_l_otp.strip() == st.session_state.login_otp_code:
+                            usr = find_user(st.session_state.login_otp_phone)
+                            st.session_state.logged_in = True
+                            st.session_state.current_user = usr
+                            log_access(usr)
+                            st.success(f"✅ OTP Verified! Welcome back, {usr['name']}!")
+                            st.session_state.login_otp_sent = False
+                            st.rerun()
+                        else:
+                            st.error("Incorrect OTP. Please check the code.")
+
+        # ── TAB 2: SIGNUP WITH OTP VERIFICATION ──
         with tab_signup:
-            with st.form("signup_portal"):
-                st.markdown("#### Enroll New User Device")
-                new_name  = st.text_input("👤 Full Name", placeholder="e.g. Keerthi, Rahul...")
-                new_phone = st.text_input("📱 Phone Number (10 digits)", placeholder="e.g. 9876543210")
-                new_email = st.text_input("✉️ Email Address", placeholder="e.g. name@domain.com")
-                new_pass  = st.text_input("🔒 Set Password (min 6 chars)", type="password")
-                new_pass2 = st.text_input("🔒 Confirm Password", type="password")
-                btn_reg   = st.form_submit_button("Enroll Device & Activate 24/7 Shield →", type="primary", use_container_width=True)
+            stage = st.session_state.signup_stage
 
-            if btn_reg:
-                if not all([new_name.strip(), new_phone.strip(), new_email.strip(), new_pass.strip()]):
-                    st.error("Please fill out all registration inputs.")
-                elif len(new_pass) < 6:
-                    st.error("Password must be at least 6 characters in length.")
-                elif new_pass != new_pass2:
-                    st.error("Passwords do not match.")
-                elif not re.fullmatch(r'\d{10}', new_phone.strip()):
-                    st.error("Please enter a valid 10-digit telephone number.")
-                else:
-                    success, resp_msg = signup_user(new_name, new_phone, new_email, new_pass)
-                    if success:
-                        st.success(resp_msg)
+            # Stage 1: Basic Info -> Send OTP
+            if stage == 1:
+                st.markdown("#### Step 1: Device Registration & Telephony Verification")
+                s_name  = st.text_input("👤 Full Name", placeholder="e.g. Keerthi, Rahul...", key="s_nm")
+                s_phone = st.text_input("📱 Mobile Phone Number (10 digits)", placeholder="e.g. 9876543210", key="s_ph")
+                s_email = st.text_input("✉️ Email Address", placeholder="e.g. name@domain.com", key="s_em")
+
+                if st.button("⚡ Send SIM Verification OTP →", type="primary", use_container_width=True):
+                    if not (s_name.strip() and s_phone.strip() and s_email.strip()):
+                        st.error("Please enter Name, Phone and Email to receive OTP.")
+                    elif not re.fullmatch(r'\d{10}', s_phone.strip()):
+                        st.error("Please enter a valid 10-digit mobile number.")
+                    elif find_user(s_phone.strip()):
+                        st.error("This mobile number is already enrolled. Please switch to the Sign In tab.")
                     else:
-                        st.error(resp_msg)
+                        generated_otp = f"{random.randint(100000, 999999)}"
+                        st.session_state.signup_otp = generated_otp
+                        st.session_state.signup_data = {
+                            "name": s_name.strip(),
+                            "phone": s_phone.strip(),
+                            "email": s_email.strip()
+                        }
+                        st.session_state.signup_stage = 2
+                        st.rerun()
+
+            # Stage 2: OTP Verification
+            elif stage == 2:
+                s_data = st.session_state.signup_data
+                st.markdown("#### Step 2: Telephony SIM OTP Verification")
+                st.markdown(f"Verification code transmitted to: **+91 {s_data['phone']}** ({s_data['name']})")
+                
+                st.markdown(f"""
+                <div style="background:rgba(157,78,221,0.2);border:1px solid #9D4EDD;border-radius:10px;padding:1rem;margin:0.8rem 0;">
+                    <div style="color:#E0AAFF;font-weight:700;">🔔 Simulated Telecom Sensor Dispatch:</div>
+                    <div style="font-size:1.4rem;font-weight:800;color:#00D4FF;letter-spacing:4px;margin-top:4px;">
+                        Demo OTP: {st.session_state.signup_otp}
+                    </div>
+                    <div style="color:#C77DFF;font-size:0.8rem;margin-top:4px;">(In production, this verification token is delivered via Indian Telecom SIM SMS Gateway)</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                otp_entered = st.text_input("Enter 6-Digit Verification Token", max_chars=6, key="otp_verify_box")
+                col_ov1, col_ov2 = st.columns([1, 1])
+                with col_ov1:
+                    if st.button("✅ Verify OTP Token →", type="primary", use_container_width=True):
+                        if otp_entered.strip() == st.session_state.signup_otp:
+                            st.session_state.signup_stage = 3
+                            st.success("OTP Authenticated!")
+                            st.rerun()
+                        else:
+                            st.error("Invalid token. Please re-enter the 6-digit OTP code.")
+                with col_ov2:
+                    if st.button("← Change Phone / Re-enter Details", use_container_width=True):
+                        st.session_state.signup_stage = 1
+                        st.rerun()
+
+            # Stage 3: Set Password
+            elif stage == 3:
+                s_data = st.session_state.signup_data
+                st.markdown(f"#### Step 3: Set Account Security Password for +91 {s_data['phone']}")
+                st.success(f"✅ Phone +91 {s_data['phone']} successfully authenticated via SIM OTP!")
+                
+                with st.form("pwd_setup_form"):
+                    p1 = st.text_input("🔒 Set Security Password (min 6 chars)", type="password")
+                    p2 = st.text_input("🔒 Confirm Password", type="password")
+                    btn_finish = st.form_submit_button("Complete Enrollment & Activate 24/7 Shield →", type="primary", use_container_width=True)
+
+                if btn_finish:
+                    if len(p1) < 6:
+                        st.error("Password must be at least 6 characters in length.")
+                    elif p1 != p2:
+                        st.error("Passwords do not match.")
+                    else:
+                        ok, msg = signup_user(s_data["name"], s_data["phone"], s_data["email"], p1)
+                        if ok:
+                            st.success(f"🎉 Congratulations {s_data['name']}! Device enrolled with OTP validation.")
+                            st.session_state.signup_stage = 1
+                            st.session_state.signup_data = {}
+                            st.session_state.signup_otp = ""
+                            st.info("You can now sign in using your Phone and Password or SIM OTP!")
+                        else:
+                            st.error(msg)
 
     st.markdown("""
     <div class="footer-bar">
@@ -805,7 +903,7 @@ with tabs[0]:
         <div class="score-card">
             <div class="score-circle">92<span style="font-size:1rem;color:#00D4FF;">/100</span></div>
             <div style="color:#10B981;font-weight:700;font-size:1.05rem;">OPTIMAL DEFENSE POSTURE</div>
-            <div style="color:#94A3B8;font-size:0.8rem;margin-top:6px;">Autonomous AI Sensors Active 24/7 across SIM, Voice &amp; Packet Streams</div>
+            <div style="color:#E0AAFF;font-size:0.8rem;margin-top:6px;">Autonomous AI Sensors Active 24/7 across SIM, Voice &amp; Packet Streams</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -819,14 +917,14 @@ with tabs[0]:
     ]
     for it in feed_items:
         st.markdown(f"""
-        <div style="background:rgba(26,42,74,0.4);border:1px solid rgba(0,212,255,0.15);border-radius:10px;padding:0.9rem 1.2rem;margin:0.4rem 0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="background:rgba(74,44,122,0.4);border:1px solid rgba(157,78,221,0.25);border-radius:10px;padding:0.9rem 1.2rem;margin:0.4rem 0;display:flex;justify-content:space-between;align-items:center;">
             <div>
-                <b style="color:#F8FAFC;">{it['type']}</b> &bull; <span style="color:#00D4FF;">{it['source']}</span>
-                <div style="color:#94A3B8;font-size:0.85rem;margin-top:3px;">{it['desc']}</div>
+                <b style="color:#FFFFFF;">{it['type']}</b> &bull; <span style="color:#00D4FF;">{it['source']}</span>
+                <div style="color:#E0AAFF;font-size:0.85rem;margin-top:3px;">{it['desc']}</div>
             </div>
             <div style="text-align:right;">
                 <span class="{it['badge']}">{it['risk']}</span><br>
-                <span style="color:#64748B;font-size:0.75rem;">{it['time']}</span>
+                <span style="color:#C77DFF;font-size:0.75rem;">{it['time']}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -863,9 +961,9 @@ with tabs[1]:
                 <div style="margin-top:6px;font-size:0.9rem;">{res['reason']}</div>
                 <div style="margin-top:10px;">
                     <span class="pill-cyan">CONFIDENCE: {res['confidence']}%</span>&nbsp;
-                    <span class="pill-cyan">⏱ {res['scanned_at']}</span>
+                    <span class="pill-purple">⏱ {res['scanned_at']}</span>
                 </div>
-                <div style="color:#94A3B8;font-size:0.85rem;margin-top:8px;">🛡️ {res['action']}</div>
+                <div style="color:#E0AAFF;font-size:0.85rem;margin-top:8px;">🛡️ {res['action']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -906,9 +1004,9 @@ with tabs[2]:
                 <div style="margin-top:6px;font-size:0.9rem;">{res_e['reason']}</div>
                 <div style="margin-top:10px;">
                     <span class="pill-cyan">CONFIDENCE: {res_e['confidence']}%</span>&nbsp;
-                    <span class="pill-cyan">⏱ {res_e['scanned_at']}</span>
+                    <span class="pill-purple">⏱ {res_e['scanned_at']}</span>
                 </div>
-                <div style="color:#94A3B8;font-size:0.85rem;margin-top:8px;">🛡️ {res_e['action']}</div>
+                <div style="color:#E0AAFF;font-size:0.85rem;margin-top:8px;">🛡️ {res_e['action']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -962,10 +1060,10 @@ with tabs[3]:
                 <div style="margin-top:6px;font-size:0.9rem;">{res_c['reason']}</div>
                 <div style="margin-top:10px;">
                     <span class="pill-cyan">CONFIDENCE: {res_c['confidence']}%</span>&nbsp;
-                    <span class="pill-cyan">⏱ {res_c['scanned_at']}</span>&nbsp;
+                    <span class="pill-purple">⏱ {res_c['scanned_at']}</span>&nbsp;
                     <span class="pill-cyan">ACOUSTIC SENSOR: ACTIVE</span>
                 </div>
-                <div style="color:#94A3B8;font-size:0.85rem;margin-top:8px;">🛡️ {res_c['action']}</div>
+                <div style="color:#E0AAFF;font-size:0.85rem;margin-top:8px;">🛡️ {res_c['action']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1008,9 +1106,9 @@ with tabs[4]:
                 <div style="margin-top:6px;font-size:0.9rem;">{res_u['reason']}</div>
                 <div style="margin-top:10px;">
                     <span class="pill-cyan">CONFIDENCE: {res_u['confidence']}%</span>&nbsp;
-                    <span class="pill-cyan">⏱ {res_u['scanned_at']}</span>
+                    <span class="pill-purple">⏱ {res_u['scanned_at']}</span>
                 </div>
-                <div style="color:#94A3B8;font-size:0.85rem;margin-top:8px;">🛡️ {res_u['action']}</div>
+                <div style="color:#E0AAFF;font-size:0.85rem;margin-top:8px;">🛡️ {res_u['action']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1062,9 +1160,9 @@ with tabs[5]:
 with tabs[6]:
     st.markdown("### 📱 Active Endpoint Profile")
     st.markdown(f"""
-    <div style="background:rgba(26,42,74,0.6);border:1px solid rgba(0,212,255,0.25);border-radius:12px;padding:1.4rem;">
-        <div style="font-size:1.3rem;font-weight:800;color:#F8FAFC;">👤 {curr['name']}</div>
-        <div style="color:#94A3B8;margin-top:8px;line-height:2;font-size:0.92rem;">
+    <div style="background:rgba(74,44,122,0.6);border:1px solid rgba(157,78,221,0.35);border-radius:12px;padding:1.4rem;">
+        <div style="font-size:1.3rem;font-weight:800;color:#FFFFFF;">👤 {curr['name']}</div>
+        <div style="color:#E0AAFF;margin-top:8px;line-height:2;font-size:0.92rem;">
             📱 Telephone Endpoint: <b style="color:#00D4FF;">{curr['phone']}</b><br>
             ✉️ Contact Email: {curr.get('email', '—')}<br>
             📡 Network Carrier: {curr.get('carrier', 'JIO 5G')}<br>
@@ -1081,9 +1179,9 @@ with tabs[6]:
             icon = "🚨" if s.get("is_threat") else "✅"
             clr  = "#EF4444" if s.get("is_threat") else "#10B981"
             st.markdown(f"""
-            <div style="background:rgba(26,42,74,0.3);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:0.6rem 0.9rem;margin:0.3rem 0;display:flex;justify-content:space-between;">
+            <div style="background:rgba(74,44,122,0.3);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:0.6rem 0.9rem;margin:0.3rem 0;display:flex;justify-content:space-between;">
                 <div><span style="color:{clr};font-weight:700;">{icon} {s.get('headline')}</span> &bull; <span class="pill-cyan">{s.get('type')}</span></div>
-                <div style="color:#64748B;font-size:0.8rem;">⏱ {s.get('scanned_at')}</div>
+                <div style="color:#C77DFF;font-size:0.8rem;">⏱ {s.get('scanned_at')}</div>
             </div>
             """, unsafe_allow_html=True)
     else:
@@ -1094,7 +1192,7 @@ with tabs[6]:
 # ─────────────────────────────────────────────────────────────────────────────
 if is_admin and len(tabs) >= 8:
     with tabs[7]:
-        st.markdown("<div style='background:rgba(239,68,68,0.15);border:1px solid #EF4444;border-radius:10px;padding:0.8rem 1.2rem;color:#FCA5A5;font-weight:700;'>👑 SENSVERIFY COMMAND CENTER — Superuser Administration</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background:rgba(239,68,68,0.2);border:1px solid #EF4444;border-radius:10px;padding:0.8rem 1.2rem;color:#FCA5A5;font-weight:700;'>👑 SENSVERIFY COMMAND CENTER — Superuser Administration</div>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
         admin_u = load_users()
@@ -1104,9 +1202,9 @@ if is_admin and len(tabs) >= 8:
         st.markdown("#### 👥 All Enrolled User Terminals")
         for idx, u in enumerate(admin_u, 1):
             st.markdown(f"""
-            <div style="background:rgba(26,42,74,0.4);border:1px solid rgba(0,212,255,0.2);border-radius:10px;padding:0.9rem 1.2rem;margin:0.4rem 0;">
-                <b style="color:#F8FAFC;">#{idx} {u['name']}</b> &bull; <span style="color:#00D4FF;">{u['phone']}</span> &bull; <span>{u.get('carrier','JIO')}</span>
-                <div style="color:#64748B;font-size:0.78rem;margin-top:4px;">Enrolled: {u.get('joined_at','—')} | Email: {u.get('email','—')}</div>
+            <div style="background:rgba(74,44,122,0.4);border:1px solid rgba(157,78,221,0.3);border-radius:10px;padding:0.9rem 1.2rem;margin:0.4rem 0;">
+                <b style="color:#FFFFFF;">#{idx} {u['name']}</b> &bull; <span style="color:#00D4FF;">{u['phone']}</span> &bull; <span>{u.get('carrier','JIO')}</span>
+                <div style="color:#C77DFF;font-size:0.78rem;margin-top:4px;">Enrolled: {u.get('joined_at','—')} | Email: {u.get('email','—')}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1114,8 +1212,8 @@ if is_admin and len(tabs) >= 8:
         st.markdown("#### 🖥️ Device Access Telemetry")
         for acc in admin_a[:15]:
             st.markdown(f"""
-            <div style="background:rgba(26,42,74,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:0.5rem 0.8rem;margin:0.25rem 0;font-size:0.82rem;">
-                <b style="color:#00D4FF;">{acc.get('name')}</b> ({acc.get('phone')}) &bull; IP: {acc.get('ip')} &bull; Host: {acc.get('device')} &bull; <span style="color:#64748B;">{acc.get('time')}</span>
+            <div style="background:rgba(74,44,122,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:0.5rem 0.8rem;margin:0.25rem 0;font-size:0.82rem;">
+                <b style="color:#00D4FF;">{acc.get('name')}</b> ({acc.get('phone')}) &bull; IP: {acc.get('ip')} &bull; Host: {acc.get('device')} &bull; <span style="color:#C77DFF;">{acc.get('time')}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1124,6 +1222,6 @@ if is_admin and len(tabs) >= 8:
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="footer-bar">
-    SensVerify Autonomous Fake News &amp; Scam Shield v6.0 &bull; Multi-Vector Threat Neutralization &bull; Designed for Real-World Deployment
+    SensVerify Autonomous Fake News &amp; Scam Shield v7.0 &bull; Multi-Vector Threat Neutralization &bull; Designed for Real-World Deployment
 </div>
 """, unsafe_allow_html=True)
