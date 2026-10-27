@@ -456,82 +456,85 @@ TRANSLATIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS STYLING: Deep Obsidian Dark + Intense Neon Purple & Magenta Glow
+# CSS STYLING: Professional CyberShield Theme — Crisp, Sharp & Clean
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap');
 
+/* Clean Dark Purple Background */
 .stApp, [data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at 15% 20%, rgba(157, 78, 221, 0.25) 0%, transparent 45%),
-                radial-gradient(circle at 85% 80%, rgba(255, 0, 255, 0.18) 0%, transparent 45%),
-                #0A0413 !important;
-    background-attachment: fixed !important;
+    background-color: #2D1B4E !important;
+    background-image: none !important;
     color: #FFFFFF !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* Neon Glow Headers */
+/* Crisp Headers — Zero Blur, 100% Readable */
 h1, h2, h3, h4, .cyber-title {
-    text-shadow: 0 0 10px #E0A3FF, 0 0 20px #9D4EDD !important;
+    color: #FFFFFF !important;
+    text-shadow: none !important;
+    filter: none !important;
 }
 
 .cyber-title {
     font-size: 2.3rem;
     font-weight: 800;
-    background: linear-gradient(90deg, #E0A3FF 0%, #C77DFF 50%, #00D4FF 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #FFFFFF !important;
     text-align: center;
     letter-spacing: -0.5px;
     margin-bottom: 0.2rem;
+    text-shadow: none !important;
 }
 .cyber-sub {
     text-align: center;
-    color: #D8B4FE;
+    color: #E2E8F0 !important;
     font-size: 0.95rem;
     margin-bottom: 1.5rem;
-    text-shadow: 0 0 8px rgba(157, 78, 221, 0.6);
+    text-shadow: none !important;
+    filter: none !important;
 }
 
-/* Deep Obsidian Glassmorphic Cards with Neon Shadow */
-.stat-card, .score-card, div[data-testid="stForm"], .red-alert, .green-safe {
-    box-shadow: 0 0 22px rgba(157, 78, 221, 0.45), 0 10px 40px rgba(0, 0, 0, 0.85) !important;
-    border: 1px solid rgba(224, 163, 255, 0.25) !important;
-    backdrop-filter: blur(24px) !important;
-    background: rgba(18, 9, 34, 0.82) !important;
-    border-radius: 14px !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+/* Cards: Solid #4A2C7A with Subtle Glow on Border Only */
+.stat-card, .score-card, div[data-testid="stForm"], .user-card {
+    background: #4A2C7A !important;
+    border: 1px solid rgba(157, 78, 221, 0.45) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25), 0 0 10px rgba(157, 78, 221, 0.3) !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
 }
 
-/* Card Glow Intensify on Hover */
-.stat-card:hover, .score-card:hover, div[data-testid="stForm"]:hover, .red-alert:hover, .green-safe:hover {
-    transform: translateY(-3px) scale(1.01) !important;
-    box-shadow: 0 0 35px rgba(157, 78, 221, 0.85), 0 0 65px rgba(255, 0, 255, 0.6) !important;
-    border-color: rgba(255, 0, 255, 0.65) !important;
-    background: rgba(24, 12, 44, 0.92) !important;
+.stat-card:hover, .score-card:hover, div[data-testid="stForm"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(157, 78, 221, 0.5) !important;
 }
 
 .stat-card {
     padding: 1.2rem;
     text-align: center;
 }
+
+/* Numbers: Crisp Pure White #FFFFFF, Bold, Zero Blur */
 .stat-number {
-    font-size: 2.1rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    text-shadow: 0 0 10px #FF00FF, 0 0 20px #9D4EDD;
-    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    color: #FFFFFF !important;
+    text-shadow: none !important;
+    filter: none !important;
+    font-family: 'JetBrains Mono', monospace !important;
 }
 .stat-label {
-    color: #C084FC;
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 4px;
+    color: #E2E8F0 !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-top: 4px !important;
+    text-shadow: none !important;
 }
 
 /* Security Score Dial */
@@ -543,117 +546,138 @@ h1, h2, h3, h4, .cyber-title {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 130px;
-    height: 130px;
+    width: 125px;
+    height: 125px;
     border-radius: 50%;
-    border: 6px solid #FF00FF;
-    box-shadow: 0 0 25px #FF00FF, 0 0 45px #9D4EDD;
-    font-size: 2.4rem;
+    border: 5px solid #9D4EDD;
+    box-shadow: 0 0 15px rgba(157, 78, 221, 0.4);
+    font-size: 2.2rem;
     font-weight: 800;
-    color: #FFFFFF;
-    text-shadow: 0 0 12px #FF00FF;
+    color: #FFFFFF !important;
+    text-shadow: none !important;
     font-family: 'JetBrains Mono', monospace;
     margin: 0.8rem auto;
 }
 
-/* Threat Alert Cards */
+/* Threat Alert Cards — Clean High Contrast */
 .red-alert {
-    background: rgba(35, 10, 22, 0.85) !important;
+    background: #3B1219 !important;
     border: 1px solid #EF4444 !important;
     border-left: 5px solid #EF4444 !important;
-    padding: 1.3rem;
+    border-radius: 10px !important;
+    padding: 1.2rem;
     margin: 0.8rem 0;
-    box-shadow: 0 0 22px rgba(239, 68, 68, 0.5), 0 10px 40px rgba(0, 0, 0, 0.8) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+    text-shadow: none !important;
 }
 .green-safe {
-    background: rgba(8, 30, 22, 0.85) !important;
+    background: #0E2E1D !important;
     border: 1px solid #10B981 !important;
     border-left: 5px solid #10B981 !important;
-    padding: 1.3rem;
+    border-radius: 10px !important;
+    padding: 1.2rem;
     margin: 0.8rem 0;
-    box-shadow: 0 0 22px rgba(16, 185, 129, 0.5), 0 10px 40px rgba(0, 0, 0, 0.8) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+    text-shadow: none !important;
 }
 
 /* Badges */
-.badge-high { background: rgba(239, 68, 68, 0.35); color: #FCA5A5; border: 1px solid #EF4444; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(239,68,68,0.5); }
-.badge-med { background: rgba(245, 158, 11, 0.35); color: #FDE68A; border: 1px solid #F59E0B; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
-.badge-low { background: rgba(16, 185, 129, 0.35); color: #6EE7B7; border: 1px solid #10B981; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(16,185,129,0.5); }
+.badge-high { background: #DC2626; color: #FFFFFF; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-med  { background: #D97706; color: #FFFFFF; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-low  { background: #059669; color: #FFFFFF; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
 
-.pill-cyan { background: rgba(0, 212, 255, 0.25); color: #00D4FF; border: 1px solid #00D4FF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; box-shadow: 0 0 10px rgba(0, 212, 255, 0.4); }
-.pill-purple { background: rgba(157, 78, 221, 0.35); color: #E0AAFF; border: 1px solid #9D4EDD; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; box-shadow: 0 0 10px rgba(157, 78, 221, 0.4); }
+.pill-cyan   { background: #0284C7; color: #FFFFFF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
+.pill-purple { background: #7C3AED; color: #FFFFFF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {
-    background: rgba(18, 9, 34, 0.8) !important;
-    backdrop-filter: blur(20px) !important;
-    border-radius: 12px !important;
-    padding: 6px !important;
-    gap: 6px !important;
-    border: 1px solid rgba(224, 163, 255, 0.25) !important;
-    box-shadow: 0 0 20px rgba(157, 78, 221, 0.3) !important;
+    background: #3B1D63 !important;
+    border-radius: 10px !important;
+    padding: 5px !important;
+    gap: 4px !important;
+    border: 1px solid rgba(157, 78, 221, 0.3) !important;
 }
 .stTabs [data-baseweb="tab"] {
-    color: #D8B4FE !important;
+    color: #E2E8F0 !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
     padding: 8px 16px !important;
-    transition: all 0.2s ease !important;
+    text-shadow: none !important;
 }
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(90deg, #9D4EDD, #FF00FF) !important;
+    background: #9D4EDD !important;
     color: #FFFFFF !important;
     font-weight: 700 !important;
-    box-shadow: 0 0 20px rgba(255, 0, 255, 0.6) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Deep Obsidian Inputs */
+/* Form Containers & High Contrast Crisp Inputs */
 div[data-testid="stForm"] {
+    background: #4A2C7A !important;
+    border: 1px solid rgba(157, 78, 221, 0.5) !important;
+    border-radius: 12px !important;
     padding: 1.5rem !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25), 0 0 10px rgba(157, 78, 221, 0.25) !important;
 }
+
 .stTextInput>div>input, .stTextArea>div>textarea {
-    background: #0E051C !important;
-    color: #FFFFFF !important;
-    border: 1px solid rgba(224, 163, 255, 0.3) !important;
+    background: #FFFFFF !important;
+    color: #1E1B4B !important;
+    font-weight: 600 !important;
+    border: 1px solid #CBD5E1 !important;
     border-radius: 8px !important;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.6) inset !important;
-    transition: all 0.3s ease !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+.stTextInput>div>input::placeholder, .stTextArea>div>textarea::placeholder {
+    color: #64748B !important;
+    font-weight: 400 !important;
 }
 .stTextInput>div>input:focus, .stTextArea>div>textarea:focus {
-    border-color: #FF00FF !important;
-    box-shadow: 0 0 15px rgba(255, 0, 255, 0.6) !important;
+    border: 2px solid #9D4EDD !important;
+    box-shadow: 0 0 6px rgba(157, 78, 221, 0.4) !important;
 }
 
-/* Neon Glow Buttons */
+/* Clean Solid Purple Buttons — No Blurry Glow */
 .stButton>button {
-    box-shadow: 0 0 15px #9D4EDD !important;
-    transition: all 0.3s ease !important;
-    border-radius: 8px !important;
-}
-.stButton>button:hover {
-    box-shadow: 0 0 30px #FF00FF, 0 0 15px #9D4EDD !important;
-    transform: translateY(-2px) !important;
-}
-.stButton>button[kind="primary"] {
-    background: linear-gradient(90deg, #9D4EDD 0%, #FF00FF 100%) !important;
+    background: #9D4EDD !important;
     color: #FFFFFF !important;
     font-weight: 700 !important;
     border: none !important;
     border-radius: 8px !important;
-    box-shadow: 0 0 20px #9D4EDD, 0 0 35px rgba(255, 0, 255, 0.4) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    text-shadow: none !important;
+    transition: background 0.2s ease, transform 0.1s ease !important;
+}
+.stButton>button:hover {
+    background: #8338EC !important;
+    box-shadow: 0 4px 12px rgba(157, 78, 221, 0.4) !important;
+    transform: translateY(-1px) !important;
+}
+.stButton>button[kind="primary"] {
+    background: #9D4EDD !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    text-shadow: none !important;
 }
 .stButton>button[kind="primary"]:hover {
-    box-shadow: 0 0 35px #FF00FF, 0 0 20px #9D4EDD !important;
-    transform: translateY(-2px) !important;
+    background: #8338EC !important;
+    box-shadow: 0 4px 14px rgba(157, 78, 221, 0.45) !important;
 }
 
 .footer-bar {
     text-align: center;
-    color: #C084FC;
-    font-size: 0.8rem;
+    color: #E2E8F0 !important;
+    font-size: 0.82rem;
     margin-top: 3.5rem;
     padding: 1.2rem;
-    border-top: 1px solid rgba(157, 78, 221, 0.25);
-    text-shadow: 0 0 10px rgba(157, 78, 221, 0.4);
+    border-top: 1px solid rgba(157, 78, 221, 0.3);
+    text-shadow: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
