@@ -456,28 +456,30 @@ TRANSLATIONS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS STYLING: Deep Purple (#2D1B4E) + Violet (#4A2C7A) + Neon Violet (#9D4EDD)
+# CSS STYLING: Full Neon Purple & Magenta Glow Theme
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
 .stApp, [data-testid="stAppViewContainer"] {
-    background-color: #2D1B4E !important;
-    background-image: 
-        radial-gradient(at 0% 0%, rgba(157, 78, 221, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(0, 212, 255, 0.12) 0px, transparent 50%) !important;
+    background: radial-gradient(circle at 20% 30%, #9D4EDD88, transparent), radial-gradient(circle at 80% 70%, #FF00FF88, transparent), #2D1B4E !important;
+    background-attachment: fixed !important;
     color: #FFFFFF !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* Cyber Titles */
+/* Neon Glow Headers */
+h1, h2, h3, h4, .cyber-title {
+    text-shadow: 0 0 10px #E0A3FF, 0 0 20px #9D4EDD !important;
+}
+
 .cyber-title {
     font-size: 2.3rem;
     font-weight: 800;
-    background: linear-gradient(90deg, #9D4EDD 0%, #C77DFF 50%, #00D4FF 100%);
+    background: linear-gradient(90deg, #E0A3FF 0%, #C77DFF 50%, #00D4FF 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-align: center;
@@ -489,22 +491,35 @@ st.markdown("""
     color: #E0AAFF;
     font-size: 0.95rem;
     margin-bottom: 1.5rem;
+    text-shadow: 0 0 8px rgba(157, 78, 221, 0.6);
 }
 
-/* Glassmorphism Stat Cards in #4A2C7A */
+/* All Cards with Full Neon Glow & Blur */
+.stat-card, .score-card, div[data-testid="stForm"], .red-alert, .green-safe {
+    box-shadow: 0 0 20px rgba(157, 78, 221, 0.5), 0 0 40px rgba(255, 0, 255, 0.3) !important;
+    border: 1px solid rgba(224, 163, 255, 0.3) !important;
+    backdrop-filter: blur(20px) !important;
+    background: rgba(74, 44, 122, 0.65) !important;
+    border-radius: 14px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Card Glow Intensify on Hover Animation */
+.stat-card:hover, .score-card:hover, div[data-testid="stForm"]:hover, .red-alert:hover, .green-safe:hover {
+    transform: translateY(-3px) scale(1.01) !important;
+    box-shadow: 0 0 30px rgba(157, 78, 221, 0.85), 0 0 60px rgba(255, 0, 255, 0.65) !important;
+    border-color: rgba(255, 0, 255, 0.6) !important;
+}
+
 .stat-card {
-    background: rgba(74, 44, 122, 0.65);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(157, 78, 221, 0.35);
-    border-radius: 14px;
     padding: 1.2rem;
     text-align: center;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 .stat-number {
     font-size: 2.1rem;
     font-weight: 800;
-    color: #C77DFF;
+    color: #FFFFFF;
+    text-shadow: 0 0 10px #FF00FF, 0 0 20px #9D4EDD;
     font-family: 'JetBrains Mono', monospace;
 }
 .stat-label {
@@ -518,12 +533,8 @@ st.markdown("""
 
 /* Security Score Dial */
 .score-card {
-    background: linear-gradient(135deg, rgba(74, 44, 122, 0.9), rgba(45, 27, 78, 0.9));
-    border: 1px solid rgba(157, 78, 221, 0.45);
-    border-radius: 16px;
     padding: 1.5rem;
     text-align: center;
-    box-shadow: 0 0 30px rgba(157, 78, 221, 0.2);
 }
 .score-circle {
     display: inline-flex;
@@ -532,83 +543,104 @@ st.markdown("""
     width: 130px;
     height: 130px;
     border-radius: 50%;
-    border: 6px solid #9D4EDD;
-    box-shadow: 0 0 25px rgba(157, 78, 221, 0.5);
+    border: 6px solid #FF00FF;
+    box-shadow: 0 0 25px #FF00FF, 0 0 45px #9D4EDD;
     font-size: 2.4rem;
     font-weight: 800;
     color: #FFFFFF;
+    text-shadow: 0 0 12px #FF00FF;
     font-family: 'JetBrains Mono', monospace;
     margin: 0.8rem auto;
 }
 
 /* Threat Alert Cards */
 .red-alert {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid #EF4444;
-    border-left: 5px solid #EF4444;
-    border-radius: 12px;
+    background: rgba(239, 68, 68, 0.2) !important;
+    border: 1px solid #EF4444 !important;
+    border-left: 5px solid #EF4444 !important;
     padding: 1.3rem;
     margin: 0.8rem 0;
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(255, 0, 255, 0.3) !important;
 }
 .green-safe {
-    background: rgba(16, 185, 129, 0.15);
-    border: 1px solid #10B981;
-    border-left: 5px solid #10B981;
-    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.2) !important;
+    border: 1px solid #10B981 !important;
+    border-left: 5px solid #10B981 !important;
     padding: 1.3rem;
     margin: 0.8rem 0;
-    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(157, 78, 221, 0.3) !important;
 }
 
 /* Badges */
-.badge-high { background: rgba(239, 68, 68, 0.25); color: #FCA5A5; border: 1px solid #EF4444; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
-.badge-med { background: rgba(245, 158, 11, 0.25); color: #FDE68A; border: 1px solid #F59E0B; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
-.badge-low { background: rgba(16, 185, 129, 0.25); color: #6EE7B7; border: 1px solid #10B981; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; }
+.badge-high { background: rgba(239, 68, 68, 0.35); color: #FCA5A5; border: 1px solid #EF4444; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(239,68,68,0.5); }
+.badge-med { background: rgba(245, 158, 11, 0.35); color: #FDE68A; border: 1px solid #F59E0B; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+.badge-low { background: rgba(16, 185, 129, 0.35); color: #6EE7B7; border: 1px solid #10B981; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 0.75rem; box-shadow: 0 0 8px rgba(16,185,129,0.5); }
 
-.pill-cyan { background: rgba(0, 212, 255, 0.2); color: #00D4FF; border: 1px solid #00D4FF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
-.pill-purple { background: rgba(157, 78, 221, 0.25); color: #E0AAFF; border: 1px solid #9D4EDD; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; }
+.pill-cyan { background: rgba(0, 212, 255, 0.25); color: #00D4FF; border: 1px solid #00D4FF; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; box-shadow: 0 0 10px rgba(0, 212, 255, 0.4); }
+.pill-purple { background: rgba(157, 78, 221, 0.35); color: #E0AAFF; border: 1px solid #9D4EDD; border-radius: 20px; padding: 3px 12px; font-size: 0.78rem; font-weight: 600; box-shadow: 0 0 10px rgba(157, 78, 221, 0.4); }
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {
-    background: rgba(74, 44, 122, 0.5) !important;
-    backdrop-filter: blur(10px) !important;
+    background: rgba(74, 44, 122, 0.6) !important;
+    backdrop-filter: blur(20px) !important;
     border-radius: 12px !important;
     padding: 6px !important;
     gap: 6px !important;
-    border: 1px solid rgba(157, 78, 221, 0.3) !important;
+    border: 1px solid rgba(224, 163, 255, 0.3) !important;
+    box-shadow: 0 0 20px rgba(157, 78, 221, 0.4) !important;
 }
 .stTabs [data-baseweb="tab"] {
     color: #E0AAFF !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
     padding: 8px 16px !important;
+    transition: all 0.2s ease !important;
 }
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(90deg, #9D4EDD, #C77DFF) !important;
+    background: linear-gradient(90deg, #9D4EDD, #FF00FF) !important;
     color: #FFFFFF !important;
     font-weight: 700 !important;
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.6) !important;
 }
 
 /* Form Containers */
 div[data-testid="stForm"] {
-    background: rgba(74, 44, 122, 0.5) !important;
-    border: 1px solid rgba(157, 78, 221, 0.35) !important;
-    border-radius: 14px !important;
     padding: 1.5rem !important;
 }
 .stTextInput>div>input, .stTextArea>div>textarea {
     background: #1C1032 !important;
     color: #FFFFFF !important;
-    border: 1px solid rgba(157, 78, 221, 0.45) !important;
+    border: 1px solid rgba(224, 163, 255, 0.35) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0 10px rgba(157, 78, 221, 0.2) inset !important;
+    transition: all 0.3s ease !important;
+}
+.stTextInput>div>input:focus, .stTextArea>div>textarea:focus {
+    border-color: #FF00FF !important;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.6) !important;
+}
+
+/* Neon Glow Buttons */
+.stButton>button {
+    box-shadow: 0 0 15px #9D4EDD !important;
+    transition: all 0.3s ease !important;
     border-radius: 8px !important;
 }
+.stButton>button:hover {
+    box-shadow: 0 0 30px #FF00FF, 0 0 15px #9D4EDD !important;
+    transform: translateY(-2px) !important;
+}
 .stButton>button[kind="primary"] {
-    background: linear-gradient(90deg, #9D4EDD 0%, #00D4FF 100%) !important;
+    background: linear-gradient(90deg, #9D4EDD 0%, #FF00FF 100%) !important;
     color: #FFFFFF !important;
     font-weight: 700 !important;
     border: none !important;
     border-radius: 8px !important;
+    box-shadow: 0 0 20px #9D4EDD, 0 0 35px rgba(255, 0, 255, 0.4) !important;
+}
+.stButton>button[kind="primary"]:hover {
+    box-shadow: 0 0 35px #FF00FF, 0 0 20px #9D4EDD !important;
+    transform: translateY(-2px) !important;
 }
 
 .footer-bar {
@@ -617,7 +649,8 @@ div[data-testid="stForm"] {
     font-size: 0.8rem;
     margin-top: 3.5rem;
     padding: 1.2rem;
-    border-top: 1px solid rgba(157, 78, 221, 0.25);
+    border-top: 1px solid rgba(157, 78, 221, 0.35);
+    text-shadow: 0 0 10px rgba(157, 78, 221, 0.5);
 }
 </style>
 """, unsafe_allow_html=True)
