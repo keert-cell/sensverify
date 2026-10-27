@@ -5,3 +5,5 @@ streamlit
 wordcloud
 matplotlib
 joblib
+fpdf2
+Pillow
