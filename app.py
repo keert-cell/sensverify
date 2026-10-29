@@ -829,14 +829,14 @@ elif st.session_state["logged_in"]:
                     st.session_state["is_admin"] = True
                     st.rerun()
                 else:
-                    pin = st.text_input("Enter Admin PIN", placeholder="Hint: 1234", type="password")
-                    st.caption("Default PIN: 1234 - For Admin Access")
+                    pin = st.text_input("Enter Admin PIN", placeholder="Enter Admin PIN", type="password", key="admin_pin")
+                    st.caption("Admin access only")
                     if st.button("Verify PIN"):
                         if pin == "1234":
                             st.session_state["is_admin"] = True
                             st.rerun()
                         else:
-                            st.error("Wrong PIN - Try 1234")
+                            st.error("Invalid Admin PIN")
         else:
             st.session_state["is_admin"] = False
 
