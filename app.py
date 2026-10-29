@@ -200,7 +200,12 @@ TRANSLATOR = {
         "enter_defense": "Enter Defense Grid",
         "logout": "Logout",
         "visual_forensics_title": "🔍 Visual AI Forensics - Why is it FAKE? - AI Explainability",
-        "word_impact_title": "Which words made it FAKE? (Impact Score)"
+        "word_impact_title": "Which words made it FAKE? (Impact Score)",
+        "front_cam_title": "🤳 Front Camera - Selfie / Face View",
+        "back_cam_title": "📄 Back Camera - Document / Poster Scan",
+        "upload_file_title": "📁 Upload Any Photo / Document / Poster",
+        "camera_guidance": "Laptop: Front camera - Hold document in front | Mobile: Back camera for documents (clear) - Front for selfie - Switch using flip icon",
+        "camera_closed_msg": "📷 Camera closed - Open front or back camera above or use Upload"
     },
     "తెలుగు": {
         "enter_mobile": "మొబైల్ నంబర్ నమోదు చేయండి",
@@ -259,7 +264,12 @@ TRANSLATOR = {
         "enter_defense": "డిఫెన్స్ గ్రిడ్‌లోకి ప్రవేశించండి",
         "logout": "లాగ్ అవుట్",
         "visual_forensics_title": "🔍 విజువల్ AI ఫోరెన్సిక్స్ - ఇది ఎందుకు ఫేక్? - AI వివరణ",
-        "word_impact_title": "ఏ పదాలు దీనిని ఫేక్ చేశాయి? (ప్రభావ స్కోర్)"
+        "word_impact_title": "ఏ పదాలు దీనిని ఫేక్ చేశాయి? (ప్రభావ స్కోర్)",
+        "front_cam_title": "🤳 ఫ్రంట్ కెమెరా - సెల్ఫీ / ఫేస్ వ్యూ",
+        "back_cam_title": "📄 బ్యాక్ కెమెరా - డాక్యుమెంట్ / పోస్టర్ స్కాన్",
+        "upload_file_title": "📁 ఏదైనా ఫోటో / డాక్యుమెంట్ / పోస్టర్ అప్లోడ్ చేయండి",
+        "camera_guidance": "ల్యాప్టాప్: ఫ్రంట్ కెమెరా - డాక్యుమెంట్ను ముందు పట్టుకోండి | మొబైల్: డాక్యుమెంట్ల కోసం బ్యాక్ కెమెరా (క్లియర్) - సెల్ఫీ కోసం ఫ్రంట్ - ఫ్లిప్ ఐకాన్తో మార్చండి",
+        "camera_closed_msg": "📷 కెమెరా మూసివేయబడింది - పైన ఫ్రంట్ లేదా బ్యాక్ కెమెరా తెరవండి లేదా అప్లోడ్ ఉపయోగించండి"
     },
     "हिन्दी": {
         "enter_mobile": "मोबाइल नंबर दर्ज करें",
@@ -829,14 +839,14 @@ elif st.session_state["logged_in"]:
                     st.session_state["is_admin"] = True
                     st.rerun()
                 else:
-                    pin = st.text_input("Enter Admin PIN", placeholder="Enter Admin PIN", type="password", key="admin_pin")
-                    st.caption("Admin access only")
+                    pin = st.text_input("Enter Admin PIN", placeholder="Hint: 1234", type="password", key="admin_pin")
+                    st.caption("Default PIN: 1234 - For Admin Access")
                     if st.button("Verify PIN"):
                         if pin == "1234":
                             st.session_state["is_admin"] = True
                             st.rerun()
                         else:
-                            st.error("Invalid Admin PIN")
+                            st.error("Wrong PIN - Try 1234")
         else:
             st.session_state["is_admin"] = False
 
@@ -933,6 +943,70 @@ elif st.session_state["logged_in"]:
 
     st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
+    # Helper function for Photo / Document / Poster Universal Check with Front & Back Camera
+    def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
+        st.markdown(f"""
+            <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:20px; text-align:center; margin-bottom:14px;">
+                <div style="font-size:28px;">📸</div>
+                <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - {shield_name}</div>
+                <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        col_opt1, col_opt2, col_opt3 = st.columns(3)
+        with col_opt1:
+            st.markdown(f"**{t('upload_file_title')}**")
+            up_file = st.file_uploader(f"Upload - {shield_name}", type=["jpg", "jpeg", "png", "pdf"], key=f"up_{key_prefix}", label_visibility="collapsed")
+        with col_opt2:
+            st.markdown(f"**{t('front_cam_title')}**")
+            front_cam = st.camera_input(t("front_cam_title"), key=f"front_camera_{key_prefix}", label_visibility="collapsed")
+        with col_opt3:
+            st.markdown(f"**{t('back_cam_title')}**")
+            back_cam = st.camera_input(t("back_cam_title"), key=f"back_camera_{key_prefix}", label_visibility="collapsed")
+
+        st.markdown(f"<div style='font-size:11px; color:#94A3B8; margin-top:6px; margin-bottom:14px;'>💡 {t('camera_guidance')}</div>", unsafe_allow_html=True)
+
+        active_media = None
+        media_source_name = ""
+        if up_file is not None:
+            active_media = up_file
+            media_source_name = "Uploaded File"
+        elif front_cam is not None:
+            active_media = front_cam
+            media_source_name = "Front Camera Capture"
+        elif back_cam is not None:
+            active_media = back_cam
+            media_source_name = "Back Camera Capture"
+
+        # Black Preview Fix: When camera closed / none selected, show friendly info
+        if active_media is None:
+            st.info(t("camera_closed_msg"))
+        else:
+            c_i1, c_i2 = st.columns([1, 2])
+            with c_i1:
+                st.image(active_media, caption=f"Capture Preview ({media_source_name})", use_container_width=True)
+            with c_i2:
+                txt_ext = do_ocr(active_media)
+                is_fake, sc, s1, s2, s3, s4, reasons, matched = analyze_fn(txt_ext)
+                file_or_cam_name = getattr(active_media, "name", "camera.jpg").lower()
+                in_tp = "Document" if "doc" in file_or_cam_name else ("Poster" if "poster" in file_or_cam_name else "Photo")
+                save_scan(f"{save_scan_label} ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+
+                th_border = "#ef4444" if is_fake else "#22c55e"
+                st.markdown(f"""
+                    <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {th_border}; border-radius:12px; padding:14px; margin-top:8px;">
+                        <div style="font-size:16px; font-weight:700;">{'🔴 FAKE DETECTED' if is_fake else '🟢 AUTHENTIC / SAFE'} - {sc}% Confidence</div>
+                        <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted Content: <i>{txt_ext[:80]}...</i></div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                if is_fake:
+                    st.markdown("""
+                        <div style="margin-top:10px; padding:10px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; font-size:12px; color:#FCA5A5;">
+                            🚨 <b>Visual Forensic Bounding Detection:</b> [SUSPICIOUS CALL-TO-ACTION & UNVERIFIED CLAIMS DETECTED]
+                        </div>
+                    """, unsafe_allow_html=True)
+
     # =========================================================================
     # PART 3: USER VIEW (SEPARATE TABS: SCAN NOW vs MY SCAN HISTORY)
     # =========================================================================
@@ -944,9 +1018,6 @@ elif st.session_state["logged_in"]:
             t("my_history")
         ])
 
-        # ---------------------------------------------------------------------
-        # USER TAB 1: 🔍 SCAN NOW (NO HISTORY TABLE HERE - CLEAN SCANNING AREA)
-        # ---------------------------------------------------------------------
         with user_tab_scan:
             tab_sms, tab_email, tab_satya = st.tabs([
                 t("sms_shield"),
@@ -1016,45 +1087,7 @@ elif st.session_state["logged_in"]:
                                 st.markdown("</div>", unsafe_allow_html=True)
 
                 with sub2:
-                    st.markdown(f"""
-                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                            <div style="font-size:28px;">📸</div>
-                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - SMS</div>
-                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    media_col1, media_col2 = st.columns(2)
-                    with media_col1:
-                        up_s = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_sms_user", label_visibility="collapsed")
-                    with media_col2:
-                        cam_s = st.camera_input("Or Capture with Camera", key="cam_sms_user")
-                        
-                    active_media = up_s if up_s is not None else cam_s
-                    if active_media:
-                        c_i1, c_i2 = st.columns([1, 2])
-                        with c_i1:
-                            st.image(active_media, caption="Media Preview", use_container_width=True)
-                        with c_i2:
-                            txt_ext = do_ocr(active_media)
-                            is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched = analyze_sms_scam(txt_ext)
-                            in_tp = "Document" if "doc" in getattr(active_media, "name", "").lower() else ("Poster" if "poster" in getattr(active_media, "name", "").lower() else "Photo")
-                            save_scan(f"SMS ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            
-                            st.markdown(f"""
-                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
-                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE SMS DETECTED' if is_fake else '🟢 REAL SMS'} - {sc}% Confidence</div>
-                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # Visual AI Forensics for Photo (Bounding Box Overlay)
-                            if is_fake:
-                                st.markdown("""
-                                    <div style="margin-top:10px; padding:10px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; font-size:12px; color:#FCA5A5;">
-                                        🚨 <b>Forensic Region Detected:</b> [SUSPICIOUS CALL-TO-ACTION & LINK DETECTED]
-                                    </div>
-                                """, unsafe_allow_html=True)
+                    render_universal_photo_tab("SMS", "sms_user", analyze_sms_scam, "SMS")
 
             # -----------------------------------------------------------------
             # SHIELD 2: EMAIL PHISHING SHIELD
@@ -1109,35 +1142,7 @@ elif st.session_state["logged_in"]:
                                 st.markdown("</div>", unsafe_allow_html=True)
 
                 with sub2:
-                    st.markdown(f"""
-                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                            <div style="font-size:28px;">📸</div>
-                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - Email</div>
-                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    em_c1, em_c2 = st.columns(2)
-                    with em_c1:
-                        up_e = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_em_user", label_visibility="collapsed")
-                    with em_c2:
-                        cam_e = st.camera_input("Or Capture with Camera", key="cam_em_user")
-                        
-                    active_e = up_e if up_e is not None else cam_e
-                    if active_e:
-                        c_i1, c_i2 = st.columns([1, 2])
-                        with c_i1:
-                            st.image(active_e, caption="Media Preview", use_container_width=True)
-                        with c_i2:
-                            txt_ext = do_ocr(active_e)
-                            is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched = analyze_email_phish("spoof@fake-mail.cc", "Detected Notice", txt_ext)
-                            in_tp = "Document" if "doc" in getattr(active_e, "name", "").lower() else ("Poster" if "poster" in getattr(active_e, "name", "").lower() else "Photo")
-                            save_scan(f"Email ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.markdown(f"""
-                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
-                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE EMAIL DETECTED' if is_fake else '🟢 AUTHENTIC EMAIL'} - {sc}% Confidence</div>
-                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                    render_universal_photo_tab("Email", "em_user", lambda txt: analyze_email_phish("spoof@fake-mail.cc", "Detected Notice", txt), "Email")
 
             # -----------------------------------------------------------------
             # SHIELD 3: NEWS TRUTH SHIELD (RENAMED FROM SATYASHIELD)
@@ -1199,35 +1204,7 @@ elif st.session_state["logged_in"]:
                                 st.markdown("</div>", unsafe_allow_html=True)
 
                 with sub2:
-                    st.markdown(f"""
-                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                            <div style="font-size:28px;">📸</div>
-                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - News</div>
-                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    nw_c1, nw_c2 = st.columns(2)
-                    with nw_c1:
-                        up_n = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_nw_user", label_visibility="collapsed")
-                    with nw_c2:
-                        cam_n = st.camera_input("Or Capture with Camera", key="cam_nw_user")
-                        
-                    active_n = up_n if up_n is not None else cam_n
-                    if active_n:
-                        c_i1, c_i2 = st.columns([1, 2])
-                        with c_i1:
-                            st.image(active_n, caption="Media Preview", use_container_width=True)
-                        with c_i2:
-                            txt_ext = do_ocr(active_n)
-                            is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched = analyze_news_truth(txt_ext)
-                            in_tp = "Document" if "doc" in getattr(active_n, "name", "").lower() else ("Poster" if "poster" in getattr(active_n, "name", "").lower() else "Photo")
-                            save_scan(f"News Truth Shield ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.markdown(f"""
-                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
-                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE NEWS DETECTED' if is_fake else '🟢 AUTHENTIC NEWS'} - {sc}% Confidence</div>
-                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                    render_universal_photo_tab("News Truth Shield", "nw_user", analyze_news_truth, "News Truth Shield")
 
         # ---------------------------------------------------------------------
         # USER TAB 2: 📋 MY SCAN HISTORY (SEPARATE TAB - CLEAN & PRIVATE)
@@ -1256,11 +1233,26 @@ elif st.session_state["logged_in"]:
     # PART 4: ADMIN VIEW (PROFESSOR / ADMIN ONLY - ALL DETAILS)
     # =========================================================================
     else:
-        st.markdown(f"""
-            <div style="font-size:22px; font-weight:800; color:#FFFFFF; margin-bottom:20px;">
-                {t('admin_title')}
-            </div>
-        """, unsafe_allow_html=True)
+        col_adm_head1, col_adm_head2 = st.columns([3, 1])
+        with col_adm_head1:
+            st.markdown(f"""
+                <div style="font-size:22px; font-weight:800; color:#FFFFFF; margin-bottom:15px;">
+                    {t('admin_title')}
+                </div>
+            """, unsafe_allow_html=True)
+        with col_adm_head2:
+            if st.button("🗑️ Clear All Data (Reset to 0)", key="clear_all_db_btn", use_container_width=True):
+                try:
+                    conn_cl = sqlite3.connect("analytics.db", check_same_thread=False)
+                    c_cl = conn_cl.cursor()
+                    c_cl.execute("DELETE FROM scans")
+                    c_cl.execute("DELETE FROM logins")
+                    conn_cl.commit()
+                    conn_cl.close()
+                    st.success("All analytics & login logs reset to 0!")
+                    st.rerun()
+                except Exception:
+                    pass
 
         conn_a = sqlite3.connect("analytics.db", check_same_thread=False)
         ca = conn_a.cursor()
