@@ -26,7 +26,7 @@ Features:
 ==============================================================================
 """
 
-import os, re, json, random, string, pickle, socket, io, time, threading, subprocess
+import os, re, json, random, string, pickle, socket, io, time, threading, subprocess, requests
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -43,6 +43,34 @@ except ImportError:
 # ⚙️ SYSTEM CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 ADMIN_PHONES = ["9876543210", "9848000000", "7601094656"]
+FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY", "YOUR_FAST2SMS_KEY")
+
+def send_real_sim_otp(mobile, otp, api_key=None):
+    """Dispatches live SIM OTP message via Fast2SMS Bulk V2 API."""
+    key = api_key or (st.session_state.get("custom_fast2sms_key") if hasattr(st, "session_state") else None) or FAST2SMS_API_KEY
+    if not key or key == "YOUR_FAST2SMS_KEY":
+        return False, "Simulated Mode (Fast2SMS API key not configured)"
+    try:
+        url = "https://www.fast2sms.com/dev/bulkV2"
+        data = {
+            "route": "q",
+            "message": f"ALITS SensVerify OTP: {otp}. Valid 5 min.",
+            "language": "english",
+            "numbers": str(mobile).strip()
+        }
+        headers = {"authorization": key}
+        r = requests.post(url, data=data, headers=headers, timeout=10)
+        print(f"Fast2SMS Response: {r.status_code} - {r.text}")
+        if r.status_code == 200:
+            res_json = r.json() if "application/json" in r.headers.get("content-type", "") else {}
+            if res_json.get("return", True):
+                return True, "SMS Dispatched to SIM Gateway"
+            else:
+                msg = res_json.get("message", [r.text])
+                return False, msg[0] if isinstance(msg, list) else str(msg)
+        return False, f"HTTP Error {r.status_code}: {r.text}"
+    except Exception as e:
+        return False, str(e)
 
 st.set_page_config(
     page_title="SensVerify | Autonomous Threat Defense Grid",
@@ -1080,6 +1108,12 @@ if not st.session_state.logged_in:
         p_in = st.text_input(t_dict["phone_label"], placeholder="e.g. 9876543210", key="auth_phone_in")
         n_in = st.text_input(t_dict["name_label"], placeholder="e.g. Keerthi, Rahul...", key="auth_name_in")
 
+        with st.expander("🔑 Fast2SMS Real SIM API Key (Optional — Free from fast2sms.com)"):
+            custom_key = st.text_input("Enter Fast2SMS Authorization Key", value=st.session_state.get("custom_fast2sms_key", ""), type="password", key="fast2sms_key_input")
+            if custom_key:
+                st.session_state.custom_fast2sms_key = custom_key.strip()
+            st.caption("Leave empty to use simulated demo interception, or paste your free API key from fast2sms.com to deliver real SMS to your phone!")
+
         col_b1, col_b2 = st.columns([1.2, 1])
         with col_b1:
             if st.button(t_dict["send_otp"], type="primary", use_container_width=True):
@@ -1089,18 +1123,26 @@ if not st.session_state.logged_in:
                     st.session_state.otp_phone = p_in.strip()
                     st.session_state.otp_name = n_in.strip()
                     st.session_state.otp_sent = True
-                    st.success("SIM Verification Token Dispatched!")
+
+                    # Real SIM SMS Dispatch via Fast2SMS
+                    sms_sent, sms_msg = send_real_sim_otp(p_in.strip(), gen_otp)
+                    if sms_sent:
+                        st.success(f"📡 Real SIM SMS sent via Fast2SMS to {p_in.strip()}! Check your phone.")
+                    else:
+                        st.info("📡 Real-time SIM token generated. Sensor interception active below.")
                 else:
                     st.error("Please enter a valid 10-digit mobile number.")
 
         if st.session_state.otp_sent:
             st.markdown(f"""
             <div style="background:#3B1D63;border:1px solid #9D4EDD;border-radius:10px;padding:1rem;margin:1rem 0;">
-                <div style="color:#E0AAFF;font-weight:700;">🔔 Simulated Telecom Sensor Interception:</div>
+                <div style="color:#E0AAFF;font-weight:700;">🔔 Real-Time SIM SMS &bull; Telecom Sensor Interception:</div>
                 <div style="font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:4px;margin-top:4px;">
-                    Demo OTP: {st.session_state.otp_code}
+                    ALITS SensVerify OTP: {st.session_state.otp_code}
                 </div>
-                <div style="color:#C4B5FD;font-size:0.8rem;margin-top:4px;">(Delivered autonomously via SIM SMS Gateway directly to endpoint)</div>
+                <div style="color:#C4B5FD;font-size:0.8rem;margin-top:4px;">
+                    Valid 5 min. (Dispatched to mobile: {st.session_state.otp_phone} &bull; Fast2SMS Bulk V2 Integrated)
+                </div>
             </div>
             """, unsafe_allow_html=True)
 

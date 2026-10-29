@@ -9,3 +9,4 @@ fpdf2
 Pillow
 streamlit-autorefresh
 reportlab
+requests
