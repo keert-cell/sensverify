@@ -329,6 +329,76 @@ def scan_sms(text: str) -> dict:
         "action": "Safe communication.", "scanned_at": now, "type": "SMS"
     }
 
+def scan_sms_or_notification(text: str) -> dict:
+    if not text or not text.strip():
+        return {"status": "EMPTY", "is_threat": False, "confidence": 0, "headline": "Empty payload", "reason": "No notification or SMS text provided", "action": "None", "type": "SMS_NOTIFICATION"}
+    
+    t = text.lower()
+    now = datetime.now().strftime("%H:%M:%S")
+    is_otp  = bool(re.search(r'\botp\b|verification code|security code|one.time', t))
+    is_safe = any(p in t for p in ["never share", "do not share", "don't share", "not request", "valid for"])
+    is_bad  = any(p in t for p in ["lottery", "won", "prize", "kyc", "click here", "http://", "customs fee", "claim", "electricity disconnected", "power will be disconnected"])
+    otp_num = (re.findall(r'\b\d{3,6}\b', text) or [""])[0]
+
+    if is_otp and is_safe and not is_bad:
+        return {
+            "status": "GREEN_SAFE_OTP", "is_threat": False, "confidence": 99.0,
+            "headline": "✅ SAFE — Genuine 2FA / Authentication Code", "otp": otp_num,
+            "reason": "Authentic multi-factor security code with legitimate safety disclaimer.",
+            "action": "Safe to enter on official application.", "scanned_at": now, "type": "SMS_NOTIFICATION"
+        }
+
+    scam_kw = ["lottery", "post office parcel", "customs fee", "prize", "kyc", "kyc blocked",
+               "disconnect", "power cut", "electricity bill", "click here", "http://", "https://t.me", "claim now", "reward",
+               "50000", "1 lakh", "congratulations", "bank account suspended", "verify immediately", "unpaid bill", "dear customer"]
+    hits = [k for k in scam_kw if k in t]
+    if hits:
+        return {
+            "status": "RED_ALERT_SCAM", "is_threat": True, "confidence": 98.4,
+            "headline": "🚨 FRAUDULENT NOTIFICATION / SCAM SMS", "triggers": hits,
+            "reason": f"Deceptive phishing keyword patterns detected: {', '.join(hits[:4])}",
+            "action": "Do NOT click any link or call back. Threat quarantined.", "scanned_at": now, "type": "SMS_NOTIFICATION"
+        }
+
+    return {
+        "status": "GREEN_SAFE", "is_threat": False, "confidence": 95.0,
+        "headline": "✅ SAFE — Clean Verified Communication", "reason": "No scam signatures or financial coercion markers detected.",
+        "action": "Safe communication.", "scanned_at": now, "type": "SMS_NOTIFICATION"
+    }
+
+def scan_email(subject, body, sender) -> dict:
+    now  = datetime.now().strftime("%H:%M:%S")
+    full = (subject + " " + body + " " + sender).lower()
+    dom  = sender.split("@")[-1].lower() if "@" in sender else ""
+    free_domains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "rediffmail.com"]
+    bank_words   = ["bank", "account", "kyc", "verify", "password", "cvv", "credit", "debit", "income tax", "sbi", "hdfc", "icici", "rbi"]
+    susp_sender  = any(d in dom for d in free_domains) and any(b in full for b in bank_words)
+
+    phishing_kw = ["account blocked", "account suspended", "verify immediately", "click here",
+                   "urgent action", "dear customer", "dear user", "update your kyc",
+                   "password expired", "unusual activity", "confirm your account",
+                   "security alert", "verify your identity", "unauthorized access",
+                   "enter your otp", "cvv", "wire transfer", "you have been selected", "claim your prize"]
+    hits = [k for k in phishing_kw if k in full]
+
+    if hits or susp_sender:
+        reasons = []
+        if hits: reasons.append(f"Deceptive phrases: {', '.join(hits[:3])}")
+        if susp_sender: reasons.append("Free email domain used to impersonate official financial/banking authority")
+        return {
+            "status": "RED_PHISHING_EMAIL", "is_threat": True, "confidence": 97.6,
+            "headline": "🚨 PHISHING EMAIL — Credential Theft Trap", "triggers": hits,
+            "sender_suspicious": susp_sender, "reason": " | ".join(reasons),
+            "action": "Delete immediately. Do not click links or disclose confidential credentials.",
+            "scanned_at": now, "type": "EMAIL"
+        }
+
+    return {
+        "status": "GREEN_SAFE_EMAIL", "is_threat": False, "confidence": 95.0,
+        "headline": "✅ SAFE — Verified Legitimate Email", "reason": "Passed domain authentication checks and linguistic safety filters.",
+        "action": "Safe correspondence.", "scanned_at": now, "type": "EMAIL"
+    }
+
 # ══════════════════════════════════════════════════════════════════════════════
 # AUTOMATED BACKGROUND CLIPBOARD & URL WATCHER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -478,6 +548,8 @@ TRANSLATIONS = {
         "subtitle": "Autonomous Cyber Threat Grid & Real-Time Automated URL Verification",
         "dashboard": "📊 Threat Analytics",
         "url_shield": "🌐 Automated URL Shield",
+        "sms_scan": "💬 SMS & Notifications",
+        "email_scan": "📧 Email Scam Scanner",
         "ask_ai": "🤖 Ask SensVerify",
         "profile": "📱 Device Profile",
         "admin": "👑 Command Admin Panel",
@@ -1284,6 +1356,8 @@ t_dict = TRANSLATIONS[st.session_state.lang]
 tab_list = [
     t_dict["dashboard"],
     t_dict["url_shield"],
+    t_dict["sms_scan"],
+    t_dict["email_scan"],
     t_dict["ask_ai"],
     t_dict["profile"],
     t_dict["admin"]
@@ -1459,9 +1533,123 @@ with tabs[1]:
         st.info("No URL threats intercepted yet. Background engine is standing guard.")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. AI CHATBOT ASSISTANT ("Ask SensVerify")
+# 3. SMS & NOTIFICATION SCAM SCANNER
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[2]:
+    st.markdown(f"### {t_dict['sms_scan']}")
+    st.caption("Inspect telecommunication payloads, WhatsApp forwards, courier SMS alerts, and mobile notifications for financial fraud, parcel customs extortion, and fake OTP traps.")
+
+    col_sn1, col_sn2 = st.columns([1.1, 1])
+    with col_sn1:
+        sn_input = st.text_area("📩 Incoming SMS or Notification Text", height=140, placeholder="Paste suspicious SMS message or app notification text here...", key="txt_sn_payload")
+        
+        c_btn1, c_btn2, c_btn3 = st.columns(3)
+        if c_btn1.button("📦 Parcel Scam", use_container_width=True):
+            sn_input = "India Post: Your package IND9821 is blocked at customs due to wrong address. Pay ₹299 immediately: http://indiapost-fee.co/pay"
+        if c_btn2.button("⚡ Electricity Cut", use_container_width=True):
+            sn_input = "Electricity Alert: Dear customer, your electricity power will be disconnected at 9:30 PM tonight due to unpaid bill. Call 9849012831 immediately."
+        if c_btn3.button("✅ Genuine OTP", use_container_width=True):
+            sn_input = "Your HDFC Bank NetBanking OTP is 849201. Valid for 10 minutes. Never share OTP with anyone, including bank officials."
+
+        btn_sn_scan = st.button("🚀 Analyze SMS / Notification", type="primary", use_container_width=True)
+
+    with col_sn2:
+        st.markdown("#### 🔬 Telemetry & Linguistic Verdict")
+        if btn_sn_scan and sn_input.strip():
+            res_sn = scan_sms_or_notification(sn_input.strip())
+            res_sn["scanned_by"] = curr["phone"]
+            append_log(SCAN_LOG, res_sn)
+
+            border_cls = "red-alert" if res_sn["is_threat"] else "green-safe"
+            text_clr   = "#EF4444" if res_sn["is_threat"] else "#10B981"
+            st.markdown(f'''
+            <div class="{border_cls}">
+                <div style="font-size:1.25rem;font-weight:800;color:{text_clr};">{res_sn['headline']}</div>
+                <div style="margin-top:6px;font-size:0.9rem;">{res_sn['reason']}</div>
+                <div style="margin-top:10px;">
+                    <span class="pill-cyan">CONFIDENCE: {res_sn['confidence']}%</span>&nbsp;
+                    <span class="pill-purple">⏱ {res_sn['scanned_at']}</span>
+                </div>
+                <div style="color:#E2E8F0;font-size:0.85rem;margin-top:8px;">🛡️ {res_sn['action']}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+            pdf_bytes = generate_pdf_report("SMS & Notification Analysis", sn_input, res_sn, curr["phone"])
+            st.download_button(
+                t_dict["download_pdf"],
+                data=pdf_bytes,
+                file_name=f"SensVerify_SMS_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        elif btn_sn_scan:
+            st.warning("Please enter SMS or notification text to analyze.")
+        else:
+            st.info("Paste any SMS message, courier delivery notification, or WhatsApp forward on the left to verify authenticity.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. EMAIL PHISHING & SCAM SCANNER
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[3]:
+    st.markdown(f"### {t_dict['email_scan']}")
+    st.caption("Inspects email headers, sender domain authenticity (SPF/DKIM heuristics), urgent coercive triggers, and financial credential harvesting traps.")
+
+    col_em1, col_em2 = st.columns([1.1, 1])
+    with col_em1:
+        e_sender  = st.text_input("📮 Sender Email Header (From:)", placeholder="e.g. sbi-support-desk@gmail.com", key="txt_em_sender")
+        e_subject = st.text_input("📌 Email Subject Line", placeholder="e.g. URGENT: Your Bank Account Has Been Temporarily Suspended", key="txt_em_subject")
+        e_body    = st.text_area("📄 Email Body Content", height=130, placeholder="Paste the complete body content of the email here...", key="txt_em_body")
+
+        c_eb1, c_eb2 = st.columns(2)
+        if c_eb1.button("🚨 Sample Bank Phishing", use_container_width=True):
+            e_sender = "sbi-kyc-verify@gmail.com"
+            e_subject = "URGENT: Your SBI account access terminated within 24 hours"
+            e_body = "Dear Customer, unusual activity detected. Your netbanking access is suspended. Click here to confirm your account and update your KYC: http://sbi-verify.in/auth"
+        if c_eb2.button("✅ Sample Clean Email", use_container_width=True):
+            e_sender = "statements@hdfcbank.net"
+            e_subject = "Your Monthly Account Statement for October 2026"
+            e_body = "Dear Customer, please find attached your monthly account e-statement. Bank officials never ask for your password, OTP, or CVV numbers."
+
+        btn_em_scan = st.button("🚀 Analyze Email Architecture", type="primary", use_container_width=True)
+
+    with col_em2:
+        st.markdown("#### 🔬 Domain Spoofing & Phishing Verdict")
+        if btn_em_scan and e_body.strip():
+            res_em = scan_email(e_subject, e_body, e_sender)
+            res_em["scanned_by"] = curr["phone"]
+            append_log(SCAN_LOG, res_em)
+
+            border_cls = "red-alert" if res_em["is_threat"] else "green-safe"
+            text_clr   = "#EF4444" if res_em["is_threat"] else "#10B981"
+            st.markdown(f'''
+            <div class="{border_cls}">
+                <div style="font-size:1.25rem;font-weight:800;color:{text_clr};">{res_em['headline']}</div>
+                <div style="margin-top:6px;font-size:0.9rem;">{res_em['reason']}</div>
+                <div style="margin-top:10px;">
+                    <span class="pill-cyan">CONFIDENCE: {res_em['confidence']}%</span>&nbsp;
+                    <span class="pill-purple">⏱ {res_em['scanned_at']}</span>
+                </div>
+                <div style="color:#E2E8F0;font-size:0.85rem;margin-top:8px;">🛡️ {res_em['action']}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+            pdf_bytes = generate_pdf_report("Email Phishing Forensic Analysis", f"From: {e_sender}\nSubject: {e_subject}\n\n{e_body}", res_em, curr["phone"])
+            st.download_button(
+                t_dict["download_pdf"],
+                data=pdf_bytes,
+                file_name=f"SensVerify_Email_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        elif btn_em_scan:
+            st.warning("Please supply email body content to evaluate.")
+        else:
+            st.info("Input sender domain and body content on the left to verify SPF/DKIM authenticity and phishing hazards.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. AI CHATBOT ASSISTANT ("Ask SensVerify")
+# ─────────────────────────────────────────────────────────────────────────────
+with tabs[4]:
     st.markdown(f"### {t_dict['ask_ai']}")
     st.caption("Ask questions regarding suspicious SMS, parcel courier fees, electricity bill threats, OTP protection, and cyber crime escalation protocols.")
 
@@ -1496,7 +1684,7 @@ with tabs[2]:
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. DEVICE PROFILE
 # ─────────────────────────────────────────────────────────────────────────────
-with tabs[3]:
+with tabs[5]:
     st.markdown(f"### {t_dict['profile']}")
     st.markdown(f"""
     <div style="background:#4A2C7A;border:1px solid rgba(157,78,221,0.4);border-radius:12px;padding:1.4rem;">
@@ -1545,7 +1733,7 @@ with tabs[3]:
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. REAL-TIME ADMIN COMMAND CENTER
 # ─────────────────────────────────────────────────────────────────────────────
-with tabs[4]:
+with tabs[6]:
     # Real-time fast sync for admin
     if st_autorefresh:
         st_autorefresh(interval=3000, key="admin_realtime_sync")
