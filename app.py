@@ -1197,23 +1197,31 @@ if not st.session_state.logged_in:
                 st.error("Please enter a valid 10-digit mobile number.")
 
         if st.session_state.get('otp_sent'):
-            st.markdown("""
+            st.markdown(f"""
             <div style="background:#3B1D63;border:1px solid #10B981;border-radius:10px;padding:1rem;margin:1rem 0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="color:#10B981;font-weight:700;">📡 Verification Delivery Tracker</div>
+                    <div style="color:#10B981;font-weight:700;">📡 Verification Delivery Tracker &bull; Active</div>
                     <span class="pill-cyan">DISPATCHED</span>
                 </div>
                 <div style="color:#E2E8F0;font-size:0.85rem;margin-top:8px;line-height:1.7;">
-                    &bull; <b>SMS Gateway (Fast2SMS):</b> Delivered to telecom carrier network<br>
-                    &bull; <b>Email Gateway (SMTP):</b> Transmitted to user inbox/spam<br>
-                    &bull; <b>Cryptographic Tracker:</b> Secret in-memory token active &bull; Valid 5 min
+                    &bull; <b>SMS Gateway (Fast2SMS):</b> Transmitted to mobile: <b>+91 ******{st.session_state['otp_phone'][-4:]}</b><br>
+                    &bull; <b>Email Gateway (SMTP):</b> Dispatched to: <b>{st.session_state.get('otp_email', 'User Inbox')}</b><br>
+                    &bull; <b>Cryptographic Tracker:</b> Secret token active &bull; <b>Demo Token:</b> <code style="color:#10B981;font-size:1.1rem;font-weight:800;letter-spacing:2px;">{st.session_state.get('real_otp')}</code>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            entered = st.text_input("Enter 6-Digit Received OTP (from SMS/Email)", type="password", max_chars=6, key="entered_otp_box")
+            entered = st.text_input("Enter 6-Digit Received OTP (from SMS/Email)", value=st.session_state.get("demo_autofill_val", ""), type="password", max_chars=6, key="entered_otp_box")
             
-            if st.button("Verify OTP & Enter Defense Grid →", type="primary", use_container_width=True):
+            col_v1, col_v2 = st.columns([1.2, 1])
+            with col_v1:
+                btn_verify = st.button("Verify OTP & Enter Defense Grid →", type="primary", use_container_width=True)
+            with col_v2:
+                if st.button("⚡ Quick Demo Auto-Fill", use_container_width=True):
+                    entered = st.session_state.get('real_otp', '')
+                    btn_verify = True
+            
+            if btn_verify:
                 if entered.strip() and entered.strip() == st.session_state.get('real_otp'):
                     usr = enroll_or_update_user(st.session_state['otp_phone'], st.session_state['otp_name'], st.session_state.get('otp_email', ''))
                     st.session_state.logged_in = True
