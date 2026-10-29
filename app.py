@@ -54,7 +54,7 @@ def send_real_sim_otp(mobile, otp, api_key=None):
         url = "https://www.fast2sms.com/dev/bulkV2"
         data = {
             "route": "q",
-            "message": f"ALITS SensVerify OTP: {otp}. Valid 5 min.",
+            "message": f"ALITS SensVerify REAL OTP is {otp}. Valid 5 min.",
             "language": "english",
             "numbers": str(mobile).strip()
         }
@@ -63,7 +63,7 @@ def send_real_sim_otp(mobile, otp, api_key=None):
         print(f"Fast2SMS Response: {r.status_code} - {r.text}")
         if r.status_code == 200:
             res_json = r.json() if "application/json" in r.headers.get("content-type", "") else {}
-            if res_json.get("return", True):
+            if res_json.get("return") is True:
                 return True, "SMS Dispatched to SIM Gateway"
             else:
                 msg = res_json.get("message", [r.text])
@@ -1138,10 +1138,10 @@ if not st.session_state.logged_in:
             <div style="background:#3B1D63;border:1px solid #9D4EDD;border-radius:10px;padding:1rem;margin:1rem 0;">
                 <div style="color:#E0AAFF;font-weight:700;">🔔 Real-Time SIM SMS &bull; Telecom Sensor Interception:</div>
                 <div style="font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:4px;margin-top:4px;">
-                    ALITS SensVerify OTP: {st.session_state.otp_code}
+                    ALITS SensVerify REAL OTP: {st.session_state.otp_code}
                 </div>
                 <div style="color:#C4B5FD;font-size:0.8rem;margin-top:4px;">
-                    Valid 5 min. (Dispatched to mobile: {st.session_state.otp_phone} &bull; Fast2SMS Bulk V2 Integrated)
+                    ALITS SensVerify REAL OTP is {st.session_state.otp_code}. Valid 5 min. (Delivered to: {st.session_state.otp_phone})
                 </div>
             </div>
             """, unsafe_allow_html=True)
