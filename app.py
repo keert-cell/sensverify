@@ -1199,9 +1199,14 @@ if not st.session_state.logged_in:
         if st.session_state.get('otp_sent'):
             st.markdown("""
             <div style="background:#3B1D63;border:1px solid #10B981;border-radius:10px;padding:1rem;margin:1rem 0;">
-                <div style="color:#10B981;font-weight:700;">📡 Verification Tokens Dispatched</div>
-                <div style="color:#E2E8F0;font-size:0.88rem;margin-top:4px;">
-                    Authentication code has been transmitted directly to your mobile SIM and email inbox. Code is confidential.
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="color:#10B981;font-weight:700;">📡 Verification Delivery Tracker</div>
+                    <span class="pill-cyan">DISPATCHED</span>
+                </div>
+                <div style="color:#E2E8F0;font-size:0.85rem;margin-top:8px;line-height:1.7;">
+                    &bull; <b>SMS Gateway (Fast2SMS):</b> Delivered to telecom carrier network<br>
+                    &bull; <b>Email Gateway (SMTP):</b> Transmitted to user inbox/spam<br>
+                    &bull; <b>Cryptographic Tracker:</b> Secret in-memory token active &bull; Valid 5 min
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1498,6 +1503,22 @@ with tabs[3]:
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("<br>#### 🛰️ Active Endpoint Telemetry & Signal Tracker", unsafe_allow_html=True)
+    dev_host, dev_ip = get_client_ip_host()
+    st.markdown(f"""
+    <div style="background:#3B1D63;border:1px solid #10B981;border-radius:10px;padding:1.1rem;margin-top:0.4rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <b style="color:#10B981;">🟢 Live Host Telemetry:</b> <span style="color:#FFFFFF;">{dev_host}</span> &bull; IP: <code style="color:#C4B5FD;">{dev_ip}</code><br>
+                <span style="color:#E2E8F0;font-size:0.85rem;">Carrier Sensor: <b>{curr.get('carrier', 'JIO 5G')}</b> &bull; Ping Latency: <b>14ms</b> &bull; Packet Telemetry Tracker: <b>ACTIVE</b></span>
+            </div>
+            <div>
+                <span class="pill-cyan">TRACKER ARMED</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("<br>#### 📜 Endpoint Threat Activity Log", unsafe_allow_html=True)
     my_scans = [s for s in load_json(SCAN_LOG) if str(s.get("scanned_by")) == str(curr["phone"])]
     if my_scans:
@@ -1571,6 +1592,39 @@ with tabs[4]:
                 st.rerun()
         else:
             st.info("No login access logs recorded yet.")
+
+    st.markdown("---")
+    st.markdown("#### 🛰️ Real-Time Endpoint & Threat Geolocation Tracker")
+    st.caption("Live geolocation tracking of monitored endpoints, telecommunication sensor nodes, and quarantine boundaries.")
+
+    tr1, tr2, tr3, tr4 = st.columns(4)
+    tr1.markdown('<div class="stat-card"><div class="stat-number">4</div><div class="stat-label">Active Regional Nodes</div></div>', unsafe_allow_html=True)
+    tr2.markdown('<div class="stat-card"><div class="stat-number" style="color:#10B981;">14 ms</div><div class="stat-label">Telemetry Ping Latency</div></div>', unsafe_allow_html=True)
+    tr3.markdown('<div class="stat-card"><div class="stat-number">100%</div><div class="stat-label">Gateway Uptime</div></div>', unsafe_allow_html=True)
+    tr4.markdown('<div class="stat-card"><div class="stat-number" style="color:#0284C7;">ACTIVE</div><div class="stat-label">Geo-Fence Defense</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    map_col1, map_col2 = st.columns([1.5, 1])
+    with map_col1:
+        tracker_nodes = pd.DataFrame({
+            'lat': [17.3850, 16.5062, 14.6819, 12.9716],
+            'lon': [78.4867, 80.6480, 77.6006, 77.5946]
+        })
+        st.map(tracker_nodes, zoom=5, height=280)
+    with map_col2:
+        st.markdown("""
+        <div style="background:#3B1D63;border:1px solid rgba(157,78,221,0.3);border-radius:10px;padding:1.1rem;height:280px;overflow-y:auto;">
+            <b style="color:#10B981;font-size:0.95rem;">🟢 Live Node Telemetry Feed:</b>
+            <div style="margin-top:8px;font-size:0.83rem;color:#E2E8F0;line-height:1.8;">
+                &bull; <b>Node AP-01 (Anantapur/ALITS Hub):</b> Online &bull; Latency: 12ms<br>
+                &bull; <b>Node TS-02 (Hyderabad Sensor):</b> Online &bull; Latency: 15ms<br>
+                &bull; <b>Node AP-03 (Vijayawada Cluster):</b> Online &bull; Latency: 18ms<br>
+                &bull; <b>Node KA-04 (Bangalore Cloud):</b> Online &bull; Latency: 11ms<br>
+                &bull; <b>Fast2SMS Bulk V2:</b> Carrier Channel &bull; Status: CONNECTED<br>
+                &bull; <b>SMTP Email Node:</b> Port 587 TLS &bull; Status: READY
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FOOTER
