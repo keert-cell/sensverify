@@ -10,3 +10,4 @@ Pillow
 streamlit-autorefresh
 reportlab
 requests
+python-dotenv

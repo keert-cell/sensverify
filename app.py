@@ -28,6 +28,12 @@ Features:
 
 import os, re, json, random, string, pickle, socket, io, time, threading, subprocess, requests
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load credentials securely from .env (ignored by git)
+load_dotenv()
+API_KEY = os.getenv("FAST2SMS_API_KEY", "")
+
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -43,12 +49,12 @@ except ImportError:
 # ⚙️ SYSTEM CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 ADMIN_PHONES = ["9876543210", "9848000000", "7601094656"]
-FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY", "YOUR_FAST2SMS_KEY")
+FAST2SMS_API_KEY = API_KEY or os.environ.get("FAST2SMS_API_KEY", "")
 
 def send_real_sim_otp(mobile, otp, api_key=None):
     """Dispatches live SIM OTP message via Fast2SMS Bulk V2 API."""
     key = api_key or (st.session_state.get("custom_fast2sms_key") if hasattr(st, "session_state") else None) or FAST2SMS_API_KEY
-    if not key or key == "YOUR_FAST2SMS_KEY":
+    if not key or key in ["YOUR_FAST2SMS_KEY", "your_actual_key_here", ""]:
         return False, "Simulated Mode (Fast2SMS API key not configured)"
     try:
         url = "https://www.fast2sms.com/dev/bulkV2"
