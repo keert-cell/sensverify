@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 .env
 users.db
+analytics.db
 .streamlit/
 .DS_Store
 data/users_db.json

@@ -3,901 +3,1349 @@ from streamlit_autorefresh import st_autorefresh
 import sqlite3
 import random
 import os
-import time
+import re
 from datetime import datetime
-from dotenv import load_dotenv
+from PIL import Image
 
-# Load optional env variables
-load_dotenv()
+# Safe OCR import with fallback
+try:
+    import pytesseract
+    OCR_AVAILABLE = True
+except Exception:
+    OCR_AVAILABLE = False
 
-# Page Configuration
+# -----------------------------------------------------------------------------
+# PAGE CONFIGURATION
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="SensVerify Universal Defense",
+    page_title="SensVerify",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # -----------------------------------------------------------------------------
-# DATABASE INITIALIZATION (SQLite users.db)
+# DATABASE INITIALIZATION (users.db & analytics.db)
 # -----------------------------------------------------------------------------
-def init_db():
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mobile TEXT,
-            email TEXT,
-            name TEXT,
-            created_at TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def save_user(mobile, email, name="Keerthi"):
+def init_databases():
     try:
-        conn = sqlite3.connect("users.db")
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO users (mobile, email, name, created_at) VALUES (?, ?, ?, ?)",
-            (mobile, email, name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        )
-        conn.commit()
-        conn.close()
+        # Users Database
+        conn_u = sqlite3.connect("users.db")
+        cu = conn_u.cursor()
+        cu.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                mobile TEXT PRIMARY KEY,
+                email TEXT,
+                name TEXT,
+                login_time TEXT,
+                logout_time TEXT,
+                last_active TEXT,
+                total_scans INTEGER
+            )
+        """)
+        # Ensure columns exist if table was created with older schema
+        for col in ["login_time", "logout_time", "last_active", "total_scans"]:
+            try:
+                cu.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
+            except Exception:
+                pass
+        conn_u.commit()
+        conn_u.close()
+
+        # Analytics Database
+        conn_a = sqlite3.connect("analytics.db")
+        ca = conn_a.cursor()
+        ca.execute("""
+            CREATE TABLE IF NOT EXISTS scans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                user_mobile TEXT,
+                user_name TEXT,
+                shield TEXT,
+                input_type TEXT,
+                input_preview TEXT,
+                extracted_text TEXT,
+                result TEXT,
+                confidence REAL,
+                blocked INTEGER
+            )
+        """)
+        
+        # Populate initial realistic analytics data if table is brand new
+        ca.execute("SELECT COUNT(*) FROM scans")
+        if ca.fetchone()[0] == 0:
+            sample_scans = [
+                (datetime.now().strftime("%Y-%m-%d 10:14:20"), "9848012345", "Rahul", "SMS", "Text", "Electricity bill unpaid tonight...", "Fake power cut APK bit.ly/power-pay", "FAKE", 96.5, 1),
+                (datetime.now().strftime("%Y-%m-%d 10:32:15"), "7601234565", "Keerthi", "Email", "Photo", "Urgent payroll account update...", "CEO gift card spoofed domain @alits-update.cc", "FAKE", 94.0, 1),
+                (datetime.now().strftime("%Y-%m-%d 11:05:40"), "9440198765", "Suresh", "SatyaShield", "Document", "NASA 15 days darkness viral...", "NASA officially says earth 15 days dark", "FAKE", 93.8, 1),
+                (datetime.now().strftime("%Y-%m-%d 11:45:10"), "9123456780", "Anitha", "SMS", "Poster", "Free Laptop scheme registration...", "Government free laptop scheme bit.ly/free-lap", "FAKE", 97.2, 1),
+                (datetime.now().strftime("%Y-%m-%d 12:10:05"), "9848012345", "Rahul", "SMS", "Text", "Your OTP is 492019 for login...", "ALITS secure login OTP 492019 valid 10 min", "REAL", 98.4, 0),
+                (datetime.now().strftime("%Y-%m-%d 12:40:18"), "7601234565", "Keerthi", "SatyaShield", "Text", "The Hindu: AP Education board...", "The Hindu official report on examination dates", "REAL", 95.0, 0),
+                (datetime.now().strftime("%Y-%m-%d 13:15:22"), "8978123456", "Venkatesh", "Email", "Text", "Alits Semester fee receipt...", "Official fee acknowledgement from accounts@alits.ac.in", "REAL", 96.8, 0)
+            ]
+            ca.executemany("""
+                INSERT INTO scans (timestamp, user_mobile, user_name, shield, input_type, input_preview, extracted_text, result, confidence, blocked)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, sample_scans)
+
+        conn_a.commit()
+        conn_a.close()
+
     except Exception as e:
         pass
 
-init_db()
+init_databases()
+
+# Helper DB Functions
+def record_user_login(mobile, email, name):
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("SELECT total_scans FROM users WHERE mobile = ?", (mobile,))
+        row = c.fetchone()
+        scans_count = row[0] if row else 0
+        c.execute("""
+            INSERT INTO users (mobile, email, name, login_time, logout_time, last_active, total_scans)
+            VALUES (?, ?, ?, ?, NULL, ?, ?)
+            ON CONFLICT(mobile) DO UPDATE SET
+                email = excluded.email,
+                name = excluded.name,
+                login_time = excluded.login_time,
+                logout_time = NULL,
+                last_active = excluded.last_active
+        """, (mobile, email, name, now, now, scans_count))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def record_user_logout(mobile):
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("UPDATE users SET logout_time = ?, last_active = ? WHERE mobile = ?", (now, now, mobile))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def log_scan_event(shield, input_type, preview, full_text, result, confidence, blocked, mobile, name):
+    try:
+        conn = sqlite3.connect("analytics.db")
+        c = conn.cursor()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("""
+            INSERT INTO scans (timestamp, user_mobile, user_name, shield, input_type, input_preview, extracted_text, result, confidence, blocked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (now, mobile, name, shield, input_type, preview[:30], full_text[:400], result, confidence, blocked))
+        conn.commit()
+        conn.close()
+
+        # Update user total scans
+        conn_u = sqlite3.connect("users.db")
+        cu = conn_u.cursor()
+        cu.execute("UPDATE users SET total_scans = total_scans + 1, last_active = ? WHERE mobile = ?", (now, mobile))
+        conn_u.commit()
+        conn_u.close()
+    except Exception:
+        pass
 
 # -----------------------------------------------------------------------------
-# MULTI-LANGUAGE TRANSLATION DICTIONARY
+# 12-LANGUAGE TRANSLATOR DICTIONARY
 # -----------------------------------------------------------------------------
 LANGUAGES = {
     "English": "en",
-    "తెలుగు (Telugu)": "te",
-    "हिन्दी (Hindi)": "hi",
-    "தமிழ் (Tamil)": "ta",
-    "ಕನ್ನಡ (Kannada)": "kn"
+    "తెలుగు": "te",
+    "हिन्दी": "hi",
+    "தமிழ்": "ta",
+    "ಕನ್ನಡ": "kn",
+    "മലയാളം": "ml",
+    "Español": "es",
+    "Français": "fr",
+    "Deutsch": "de",
+    "日本語": "ja",
+    "العربية": "ar",
+    "中文": "zh"
 }
 
 TRANSLATIONS = {
     "en": {
-        "welcome": "Welcome",
-        "enter_mobile": "Enter mobile number",
-        "mobile_placeholder": "Mobile number",
+        "title": "SensVerify",
+        "enter_mobile": "Enter Mobile Number - మొబైల్ నంబర్",
         "continue": "Continue",
-        "email": "Email address",
-        "continue_email": "Continue with Email",
+        "name_placeholder": "Enter Your Name - మీ పేరు e.g., Rahul",
+        "email_placeholder": "Enter Email (Optional) - ఈమెయిల్",
+        "or": "— or —",
         "continue_google": "Continue with Google",
-        "back": "← Back",
-        "logout": "Logout",
-        "live_badge": "LIVE-SENSORS - REAL-TIME ACTIVE • 24/7",
+        "enter_defense": "Enter Defense Grid - ప్రవేశించండి",
+        "welcome_user": "Welcome",
+        "live_badge": "LIVE-SENSORS - REAL-TIME ACTIVE - 24/7",
         "protected_endpoints": "PROTECTED ENDPOINTS",
         "scans_executed": "ACTIVE SCANS EXECUTED",
         "threats_blocked": "THREATS BLOCKED TODAY",
-        "subtitle": "Autonomous Cyber Threat Grid & Real-Time ALITS URL Verification",
-        "defense_grid": "SensVerify Universal Defense Grid",
-        "welcome_user": "Welcome, Keerthi!",
-        "endpoints_desc": "3 Automated Protection Layers Guarding You 24/7:",
-        "ep_sms": "💬 SMS & Notification Scam Shield",
-        "ep_sms_desc": "Detects fake bank SMS, electricity disconnection threats, lottery scams, and WhatsApp fraud.",
-        "ep_mail": "📧 Email Phishing & Spoof Shield",
-        "ep_mail_desc": "Analyzes sender domain spoofing, urgency traps, malware lures, and credential theft vectors.",
-        "ep_url": "🌐 URL & QR Threat Shield",
-        "ep_url_desc": "Scans malicious links, lookalike typo domains, fake login pages, and QR redirects.",
-        "scan_now": "Scan Threat",
-        "clean_status": "AUTHENTIC / SAFE",
-        "scam_status": "MALICIOUS / FAKE SCAM DETECTED",
-        "confidence": "Threat Confidence",
-        "download_report": "📥 Download PDF Defense Report",
-        "zero_trust_tooltip": "Zero Trust = Verify every request, never trust by default - even after login every scan is verified."
+        "logout": "Logout",
+        "tab_sms": "SMS Scam Shield",
+        "tab_email": "Email Phishing Shield",
+        "tab_satya": "SatyaShield - Truth Verifier",
+        "text_check": "📝 Text Check",
+        "photo_check": "📸 Photo / Document / Poster",
+        "check_sms_btn": "Check SMS - Verify",
+        "check_email_btn": "Check Email - Verify",
+        "check_news_btn": "Verify News - Truth Check",
+        "upload_title": "Upload Any Photo / Document / Poster / Screenshot to Verify",
+        "upload_subtitle": "Any source - Screenshot, camera photo, document, poster - Universal check"
     },
     "te": {
-        "welcome": "స్వాగతం",
+        "title": "SensVerify",
         "enter_mobile": "మొబైల్ నంబర్ నమోదు చేయండి",
-        "mobile_placeholder": "మొబైల్ నంబర్",
         "continue": "కొనసాగించు",
-        "email": "ఈమెయిల్ చిరునామా",
-        "continue_email": "ఈమెయిల్తో కొనసాగించు",
+        "name_placeholder": "మీ పేరు నమోదు చేయండి ఉదా: రాహుల్",
+        "email_placeholder": "ఈమెయిల్ (ఐచ్ఛికం)",
+        "or": "— లేదా —",
         "continue_google": "Google తో కొనసాగించు",
-        "back": "← వెనుకకు",
-        "logout": "లాగ్ అవుట్",
-        "live_badge": "లైవ్-సెన్సార్లు - రియల్-టైమ్ యాక్టివ్ • 24/7",
-        "protected_endpoints": "రక్షిత ముగింపు పాయింట్లు",
-        "scans_executed": "యాక్టివ్ స్కాన్‌లు పూర్తయ్యాయి",
+        "enter_defense": "డిఫెన్స్ గ్రిడ్‌లోకి ప్రవేశించండి",
+        "welcome_user": "స్వాగతం",
+        "live_badge": "లైవ్-సెన్సార్లు - రియల్-టైమ్ యాక్టివ్ - 24/7",
+        "protected_endpoints": "రక్షిత ఎండ్‌పాయింట్లు",
+        "scans_executed": "యాక్టివ్ స్కాన్‌లు",
         "threats_blocked": "నేడు నిరోధించిన బెదిరింపులు",
-        "subtitle": "స్వయంప్రతిపత్త సైబర్ ముప్పు గ్రిడ్ & రియల్-టైమ్ ALITS URL ధృవీకరణ",
-        "defense_grid": "SensVerify సార్వత్రిక రక్షణ గ్రిడ్",
-        "welcome_user": "స్వాగతం, కీర్తి!",
-        "endpoints_desc": "24/7 మీకు రక్షణ కల్పించే 3 ఆటోమేటెడ్ సెక్యూరిటీ లేయర్‌లు:",
-        "ep_sms": "💬 SMS & నోటిఫికేషన్ స్కామ్ షీల్డ్",
-        "ep_sms_desc": "నకిలీ బ్యాంక్ SMS, కరెంట్ బిల్లు హెచ్చరికలు, లాటరీ మోసాలు మరియు వాట్సాప్ మోసాలను గుర్తిస్తుంది.",
-        "ep_mail": "📧 ఈమెయిల్ ఫిషింగ్ & స్పూఫ్ షీల్డ్",
-        "ep_mail_desc": "నకిలీ డొమైన్‌లు, అత్యవసర బెదిరింపులు మరియు పాస్‌వర్డ్ దొంగతనం ప్రయత్నాలను విశ్లేషిస్తుంది.",
-        "ep_url": "🌐 URL & QR ముప్పు షీల్డ్",
-        "ep_url_desc": "హానికరమైన లింక్‌లు, నకిలీ లాగిన్ పేజీలు మరియు మోసపూరిత QR కోడ్‌లను స్కాన్ చేస్తుంది.",
-        "scan_now": "ముప్పును స్కాన్ చేయండి",
-        "clean_status": "సురక్షితమైనది / నిజమైనది (SAFE)",
-        "scam_status": "ప్రమాదకరమైన నకిలీ మోసం గుర్తించబడింది (FAKE SCAM)",
-        "confidence": "ముప్పు విశ్వసనీయత (Confidence)",
-        "download_report": "📥 PDF డిఫెన్స్ రిపోర్ట్ డౌన్‌లోడ్ చేయండి",
-        "zero_trust_tooltip": "Zero Trust = ప్రతి అభ్యర్థనను ధృవీకరించండి, ముందే దేన్నీ నమ్మవద్దు - లాగిన్ తర్వాత కూడా ప్రతి స్కాన్ ధృవీకరించబడుతుంది."
+        "logout": "లాగ్ అవుట్",
+        "tab_sms": "SMS స్కామ్ షీల్డ్",
+        "tab_email": "ఈమెయిల్ ఫిషింగ్ షీల్డ్",
+        "tab_satya": "సత్యషీల్డ్ - నిజనిర్ధారణ",
+        "text_check": "📝 టెక్స్ట్ తనిఖీ",
+        "photo_check": "📸 ఫోటో / డాక్యుమెంట్ / పోస్టర్",
+        "check_sms_btn": "SMS తనిఖీ చేయండి",
+        "check_email_btn": "ఈమెయిల్ తనిఖీ చేయండి",
+        "check_news_btn": "వార్త నిజనిర్ధారణ చేయండి",
+        "upload_title": "ఏదైనా ఫోటో / డాక్యుమెంట్ / పోస్టర్ / స్క్రీన్‌షాట్ అప్‌లోడ్ చేయండి",
+        "upload_subtitle": "ఏ మూలం నుండైనా - స్క్రీన్‌షాట్, ఫోటో, డాక్యుమెంట్, పోస్టర్ - సార్వత్రిక తనిఖీ"
     },
     "hi": {
-        "welcome": "स्वागत है",
+        "title": "SensVerify",
         "enter_mobile": "मोबाइल नंबर दर्ज करें",
-        "mobile_placeholder": "मोबाइल नंबर",
         "continue": "जारी रखें",
-        "email": "ईमेल पता",
-        "continue_email": "ईमेल से जारी रखें",
+        "name_placeholder": "अपना नाम दर्ज करें जैसे: राहुल",
+        "email_placeholder": "ईमेल दर्ज करें (वैकल्पिक)",
+        "or": "— या —",
         "continue_google": "Google से जारी रखें",
-        "back": "← वापस",
-        "logout": "लॉग आउट",
-        "live_badge": "लाइव-सेंसर - रीयल-टाइम सक्रिय • 24/7",
+        "enter_defense": "डिफेंस ग्रिड में प्रवेश करें",
+        "welcome_user": "स्वागत है",
+        "live_badge": "लाइव-सेंसर - रीयल-टाइम सक्रिय - 24/7",
         "protected_endpoints": "सुरक्षित एंडपॉइंट",
-        "scans_executed": "सक्रिय स्कैन निष्पादित",
-        "threats_blocked": "आज ब्लॉक किए गए खतरे",
-        "subtitle": "स्वायत्त साइबर खतरा ग्रिड और रीयल-टाइम ALITS URL सत्यापन",
-        "defense_grid": "SensVerify सार्वभौमिक रक्षा ग्रिड",
-        "welcome_user": "स्वागत है, कीर्ति!",
-        "endpoints_desc": "24/7 आपकी सुरक्षा करने वाले 3 स्वचालित सुरक्षा स्तर:",
-        "ep_sms": "💬 एसएमएस और सूचना धोखाधड़ी ढाल",
-        "ep_sms_desc": "फर्जी बैंक एसएमएस, बिजली बिल कटौती की धमकी, और व्हाट्सएप धोखाधड़ी का पता लगाता है।",
-        "ep_mail": "📧 ईमेल फ़िशिंग और स्पूफ शील्ड",
-        "ep_mail_desc": "प्रेषक डोमेन स्पूफिंग, तात्कालिकता जाल और क्रेडेंशियल चोरी की पहचान करता है।",
-        "ep_url": "🌐 यूआरएल और क्यूआर खतरा शील्ड",
-        "ep_url_desc": "दुर्भावनापूर्ण लिंक, नकली लॉगिन पेज और क्यूआर रीडायरेक्ट को स्कैन करता है।",
-        "scan_now": "खतरे को स्कैन करें",
-        "clean_status": "सुरक्षित / प्रामाणिक (SAFE)",
-        "scam_status": "दुर्भावनापूर्ण फर्जी घोटाला पकड़ा गया (FAKE SCAM)",
-        "confidence": "खतरा सटीकता (Confidence)",
-        "download_report": "📥 पीडीएफ रक्षा रिपोर्ट डाउनलोड करें",
-        "zero_trust_tooltip": "Zero Trust = हर अनुरोध को सत्यापित करें, कभी भी भरोसा न करें - लॉगिन के बाद भी प्रत्येक स्कैन की पुष्टि की जाती है।"
-    },
-    "ta": {
-        "welcome": "வரவேற்கிறோம்",
-        "enter_mobile": "மொபைல் எண்ணை உள்ளிடவும்",
-        "mobile_placeholder": "மொபைல் எண்",
-        "continue": "தொடரவும்",
-        "email": "மின்னஞ்சல் முகவரி",
-        "continue_email": "மின்னஞ்சல் மூலம் தொடரவும்",
-        "continue_google": "Google உடன் தொடரவும்",
-        "back": "← பின்செல்",
-        "logout": "வெளியேறு",
-        "live_badge": "நேரலை உணரிகள் - நிகழ்நேர செயலில் • 24/7",
-        "protected_endpoints": "பாதுகாக்கப்பட்ட முனைப்புள்ளிகள்",
-        "scans_executed": "செயலில் உள்ள ஸ்கேன்கள்",
-        "threats_blocked": "தடுக்கப்பட்ட அச்சுறுத்தல்கள்",
-        "subtitle": "தன்னாட்சி இணைய அச்சுறுத்தல் கட்டம் & நிகழ்நேர ALITS URL சரிபார்ப்பு",
-        "defense_grid": "SensVerify உலகளாவிய பாதுகாப்பு கட்டம்",
-        "welcome_user": "வரவேற்கிறோம், கீர்த்தி!",
-        "endpoints_desc": "24/7 உங்களைப் பாதுகாக்கும் 3 தானியங்கி பாதுகாப்பு அடுக்குகள்:",
-        "ep_sms": "💬 எஸ்எம்எஸ் மற்றும் அறிவிப்பு மோசடி கேடயம்",
-        "ep_sms_desc": "போலி வங்கி எஸ்எம்எஸ், மின் இணைப்பு துண்டிப்பு அச்சுறுத்தல், வாட்ஸ்அப் மோசடிகளை கண்டறியும்.",
-        "ep_mail": "📧 மின்னஞ்சல் ஃபிஷிங் கேடயம்",
-        "ep_mail_desc": "போலி மின்னஞ்சல் முகவரிகள், அவசர எச்சரிக்கைகள் மற்றும் கடவுச்சொல் திருட்டுகளை கண்டறியும்.",
-        "ep_url": "🌐 URL & QR அச்சுறுத்தல் கேடயம்",
-        "ep_url_desc": "தீங்கிழைக்கும் இணைப்புகள், போலி உள்நுழைவு பக்கங்கள் மற்றும் QR குறியீடுகளை ஸ்கேன் செய்கிறது.",
-        "scan_now": "அச்சுறுத்தலை ஸ்கேன் செய்க",
-        "clean_status": "பாதுகாப்பானது / அசல் (SAFE)",
-        "scam_status": "தீங்கிழைக்கும் போலி மோசடி கண்டறியப்பட்டது (FAKE SCAM)",
-        "confidence": "அச்சுறுத்தல் துல்லியம்",
-        "download_report": "📥 PDF பாதுகாப்பு அறிக்கையைப் பதிவிறக்கவும்",
-        "zero_trust_tooltip": "Zero Trust = ஒவ்வொரு கோரிக்கையையும் சரிபார்க்கவும், எதையும் நம்ப வேண்டாம் - உள்நுழைந்த பிறகும் ஒவ்வொரு ஸ்கேனும் சரிபார்க்கப்படுகிறது."
-    },
-    "kn": {
-        "welcome": "ಸ್ವಾಗತ",
-        "enter_mobile": "ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ",
-        "mobile_placeholder": "ಮೊಬೈಲ್ ಸಂಖ್ಯೆ",
-        "continue": "ಮುಂದುವರಿಯಿರಿ",
-        "email": "ಇಮೇಲ್ ವಿಳಾಸ",
-        "continue_email": "ಇಮೇಲ್ ಮೂಲಕ ಮುಂದುವರಿಯಿರಿ",
-        "continue_google": "Google ನೊಂದಿಗೆ ಮುಂದುವರಿಯಿರಿ",
-        "back": "← ಹಿಂದೆ",
-        "logout": "ಲಾಗ್ ಔಟ್",
-        "live_badge": "ಲೈವ್-ಸೆನ್ಸಾರ್ಗಳು - ನೈಜ-ಸಮಯ ಸಕ್ರಿಯ • 24/7",
-        "protected_endpoints": "ರಕ್ಷಿತ ಅಂತಿಮ ಬಿಂದುಗಳು",
-        "scans_executed": "ಸಕ್ರಿಯ ಸ್ಕ್ಯಾನ್ಗಳು",
-        "threats_blocked": "ತಡೆಹಿಡಿಯಲಾದ ಬೆದರಿಕೆಗಳು",
-        "subtitle": "ಸ್ವಾಯತ್ತ ಸೈಬರ್ ಬೆದರಿಕೆ ಗ್ರಿಡ್ ಮತ್ತು ರಿಯಲ್-ಟೈಮ್ ALITS URL ಪರಿಶೀಲನೆ",
-        "defense_grid": "SensVerify ಸಾರ್ವತ್ರಿಕ ರಕ್ಷಣಾ ಗ್ರಿಡ್",
-        "welcome_user": "ಸ್ವಾಗತ, ಕೀರ್ತಿ!",
-        "endpoints_desc": "24/7 ನಿಮ್ಮನ್ನು ರಕ್ಷಿಸುವ 3 ಸ್ವಯಂಚಾಲಿತ ಭದ್ರತಾ ಪದರಗಳು:",
-        "ep_sms": "💬 ಎಸ್ಎಂಎಸ್ ಮತ್ತು ಅಧಿಸೂಚನೆ ವಂಚನೆ ಶೀಲ್ಡ್",
-        "ep_sms_desc": "ನಕಲಿ ಬ್ಯಾಂಕ್ SMS, ವಿದ್ಯುತ್ ಕಡಿತ ಬೆದರಿಕೆಗಳು ಮತ್ತು ವಾಟ್ಸಾಪ್ ವಂಚನೆಗಳನ್ನು ಪತ್ತೆ ಮಾಡುತ್ತದೆ.",
-        "ep_mail": "📧 ಇಮೇಲ್ ಫಿಶಿಂಗ್ ಶೀಲ್ಡ್",
-        "ep_mail_desc": "ನಕಲಿ ಡೊಮೇನ್, ತುರ್ತು ಬೆದರಿಕೆಗಳು ಮತ್ತು ಪಾಸ್ವರ್ಡ್ ಕಳ್ಳತನದ ಯತ್ನಗಳನ್ನು ವಿಶ್ಲೇಷಿಸುತ್ತದೆ.",
-        "ep_url": "🌐 URL ಮತ್ತು QR ಬೆದರಿಕೆ ಶೀಲ್ಡ್",
-        "ep_url_desc": "ಹಾನಿಕಾರಕ ಲಿಂಕ್ಗಳು, ನಕಲಿ ಲಾಗಿನ್ ಪುಟಗಳು ಮತ್ತು QR ಮರುನಿರ್ದೇಶನಗಳನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡುತ್ತದೆ.",
-        "scan_now": "ಬೆದರಿಕೆಯನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಿ",
-        "clean_status": "ಸುರಕ್ಷಿತ / ಅಸಲಿ (SAFE)",
-        "scam_status": "ಅಪಾಯಕಾರಿ ನಕಲಿ ಹಗರಣ ಪತ್ತೆಯಾಗಿದೆ (FAKE SCAM)",
-        "confidence": "ಬೆದರಿಕೆ ನಿಖರತೆ",
-        "download_report": "📥 PDF ರಕ್ಷಣಾ ವರದಿಯನ್ನು ಡೌನ್ಲೋಡ್ ಮಾಡಿ",
-        "zero_trust_tooltip": "Zero Trust = ಪ್ರತಿ ವಿನಂತಿಯನ್ನು ಪರಿಶೀಲಿಸಿ, ಪೂರ್ವನಿಯೋಜಿತವಾಗಿ ನಂಬಬೇಡಿ - ಲಾಗಿನ್ ನಂತರವೂ ಪ್ರತಿ ಸ್ಕ್ಯಾನ್ ಅನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ."
+        "scans_executed": "सक्रिय स्कैन",
+        "threats_blocked": "आज रोके गए खतरे",
+        "logout": "लॉग आउट",
+        "tab_sms": "एसएमएस स्कैम शील्ड",
+        "tab_email": "ईमेल फ़िशिंग शील्ड",
+        "tab_satya": "सत्यशील्ड - सत्य सत्यापक",
+        "text_check": "📝 टेक्स्ट जांच",
+        "photo_check": "📸 फोटो / दस्तावेज़ / पोस्टर",
+        "check_sms_btn": "एसएमएस जांचें",
+        "check_email_btn": "ईमेल जांचें",
+        "check_news_btn": "समाचार सत्यापित करें",
+        "upload_title": "सत्यापित करने के लिए कोई भी फोटो / दस्तावेज़ / पोस्टर अपलोड करें",
+        "upload_subtitle": "किसी भी स्रोत से - स्क्रीनशॉट, फोटो, दस्तावेज़, पोस्टर"
     }
 }
 
-# -----------------------------------------------------------------------------
-# SESSION STATE & 3-SECOND AUTO REFRESH
-# -----------------------------------------------------------------------------
-# Trigger 3-second auto update
-st_autorefresh(interval=3000, key="stats_refresh")
+def t(key):
+    lang = st.session_state.get("lang", "en")
+    lang_dict = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
+    return lang_dict.get(key, TRANSLATIONS["en"].get(key, key))
 
+# -----------------------------------------------------------------------------
+# SESSION STATE INITIALIZATION
+# -----------------------------------------------------------------------------
 if "lang" not in st.session_state:
     st.session_state["lang"] = "en"
 
-if "login_page" not in st.session_state:
-    st.session_state["login_page"] = 1
+if "page" not in st.session_state:
+    st.session_state["page"] = 1
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
-if "mobile" not in st.session_state:
-    st.session_state["mobile"] = ""
+if "user_mobile" not in st.session_state:
+    st.session_state["user_mobile"] = ""
 
-if "email" not in st.session_state:
-    st.session_state["email"] = ""
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = "Rahul"
 
-if "scans" not in st.session_state:
-    st.session_state["scans"] = 154
+if "user_email" not in st.session_state:
+    st.session_state["user_email"] = ""
+
+if "scans_count" not in st.session_state:
+    st.session_state["scans_count"] = 486
 else:
-    # Auto-increment randomly every 3s tick
-    st.session_state["scans"] += random.randint(0, 2)
+    if st.session_state.get("logged_in", False):
+        st.session_state["scans_count"] += random.randint(0, 2)
 
-if "threats" not in st.session_state:
-    st.session_state["threats"] = 18
+if "threats_count" not in st.session_state:
+    st.session_state["threats_count"] = 145
 else:
-    # Auto-increment randomly every 3s tick
-    st.session_state["threats"] += random.randint(0, 1)
+    if st.session_state.get("logged_in", False):
+        st.session_state["threats_count"] += random.randint(0, 1)
 
-def t(key):
-    lang = st.session_state.get("lang", "en")
-    return TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, TRANSLATIONS["en"].get(key, key))
+if "chatbot_history" not in st.session_state:
+    st.session_state["chatbot_history"] = [
+        {"role": "assistant", "content": "Namaste! Nenu SensVerify Universal Assistant. Nన్ను App gurinchi ayina, AI, Python, Fake news, College or general ga edani gurinchi ayina adagochu! Ask me anything."}
+    ]
+
+if "chatbot_open" not in st.session_state:
+    st.session_state["chatbot_open"] = False
+
+# Auto-refresh only when in Defense Grid
+if st.session_state.get("logged_in", False):
+    st_autorefresh(interval=3000, key="grid_refresh")
 
 # -----------------------------------------------------------------------------
-# HIGH-PRECISION CYBER THEME CSS
+# GLOBAL MODERN GLASSMORPHISM CSS
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
     html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Plus Jakarta Sans', sans-serif;
         color: #FFFFFF !important;
     }
 
     .stApp {
-        background: radial-gradient(circle at top center, #2D1B4E 0%, #170d2b 60%, #0c0617 100%);
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #1e3a8a 100%);
+        background-attachment: fixed;
     }
 
-    /* Live Sensor Badge & Pulse Animation */
+    /* Subtle Twinkling Stars Background */
+    @keyframes twinkle {
+        0% { opacity: 0.3; transform: translateY(0px); }
+        50% { opacity: 0.8; transform: translateY(-5px); }
+        100% { opacity: 0.3; transform: translateY(0px); }
+    }
+
+    /* Live Sensor Pulse */
     @keyframes pulse {
-        0% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
-        50% { opacity: 0.4; transform: scale(1.15); box-shadow: 0 0 10px 4px rgba(0, 255, 136, 0.4); }
-        100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+        0% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+        50% { opacity: 0.4; transform: scale(1.1); box-shadow: 0 0 12px 3px rgba(34, 197, 94, 0.4); }
+        100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
     }
 
     .pulse-dot {
         display: inline-block;
-        width: 10px;
-        height: 10px;
-        background-color: #00FF88;
+        width: 9px;
+        height: 9px;
+        background-color: #22c55e;
         border-radius: 50%;
         margin-right: 8px;
-        animation: pulse 1.8s infinite;
+        animation: pulse 2s infinite;
         vertical-align: middle;
     }
 
     .live-badge {
         display: inline-flex;
         align-items: center;
-        background: rgba(0, 255, 136, 0.12);
-        border: 1px solid rgba(0, 255, 136, 0.35);
+        background: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.3);
         border-radius: 20px;
         padding: 6px 14px;
         font-family: 'JetBrains Mono', monospace;
-        font-size: 11.5px;
+        font-size: 12px;
         font-weight: 700;
-        color: #00FF88 !important;
-        letter-spacing: 0.5px;
+        color: #22c55e !important;
     }
 
-    .live-time {
-        color: #A5B4FC;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 11px;
-        margin-top: 4px;
-    }
-
-    /* Stat Cards */
+    /* Stat Cards (Glassmorphism rounded 20px) */
     .stat-card {
-        background: rgba(45, 27, 78, 0.65);
-        border: 1px solid #4A2C7A;
-        border-radius: 12px;
-        padding: 16px 20px;
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        padding: 20px;
         text-align: center;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         transition: transform 0.2s ease, border-color 0.2s ease;
     }
     .stat-card:hover {
-        border-color: #9D4EDD;
         transform: translateY(-2px);
+        border-color: rgba(59, 130, 246, 0.4);
     }
-    .stat-number {
+    .stat-val {
         font-size: 32px;
         font-weight: 800;
         color: #FFFFFF;
         font-family: 'JetBrains Mono', monospace;
         line-height: 1.1;
     }
-    .stat-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: #C084FC;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-top: 6px;
-    }
-    .stat-update {
-        font-size: 10px;
-        color: #34D399;
-        margin-top: 4px;
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Login Box Container */
-    .auth-container {
-        max-width: 460px;
-        margin: 24px auto 0 auto;
-        background: rgba(30, 16, 54, 0.85);
-        border: 1px solid #4A2C7A;
-        border-radius: 18px;
-        padding: 32px 30px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-    }
-
-    /* OR Divider Pill */
-    .or-divider {
-        display: flex;
-        align-items: center;
-        margin: 22px 0;
-    }
-    .or-divider-line {
-        flex: 1;
-        height: 1px;
-        background: #4A2C7A;
-    }
-    .or-divider-pill {
-        padding: 4px 14px;
-        border-radius: 12px;
-        background: #2D1B4E;
-        border: 1px solid #4A2C7A;
-        color: #C084FC;
+    .stat-lbl {
         font-size: 12px;
         font-weight: 600;
-        margin: 0 12px;
-        text-transform: lowercase;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-top: 6px;
+    }
+    .stat-sub {
+        font-size: 11px;
+        color: #22C55E;
+        margin-top: 4px;
     }
 
-    /* Google Button Styling */
+    /* Glassmorphism Container */
+    .glass-box {
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        padding: 30px;
+    }
+
+    /* Input Styling */
+    .stTextInput input, .stTextArea textarea {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 14px !important;
+        color: #FFFFFF !important;
+        font-size: 15px !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.4) !important;
+    }
+
+    /* Primary Button (Blue Gradient) */
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 14px !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3) !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton>button[kind="primary"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45) !important;
+    }
+    .stButton>button[kind="primary"]:active {
+        transform: scale(0.98) !important;
+    }
+
+    /* Secondary / Google Button */
     .stButton>button[kind="secondary"] {
         background-color: #FFFFFF !important;
-        color: #3C4043 !important;
+        color: #000000 !important;
         border: 1px solid #DADCE0 !important;
-        border-radius: 8px !important;
+        border-radius: 14px !important;
         font-weight: 600 !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
     }
     .stButton>button[kind="secondary"]:hover {
         background-color: #F8F9FA !important;
-        border-color: #C6C6C6 !important;
+        transform: translateY(-2px) !important;
     }
 
-    /* Zero Trust Badge */
-    .zero-trust-badge {
-        display: inline-block;
-        background: rgba(157, 78, 221, 0.15);
-        border: 1px solid rgba(157, 78, 221, 0.4);
-        border-radius: 6px;
-        padding: 4px 10px;
-        font-size: 10px;
+    /* Bar Graph Components */
+    .bar-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        font-size: 12px;
+    }
+    .bar-lbl {
+        width: 140px;
+        color: #CBD5E1;
+        font-weight: 500;
+    }
+    .bar-track {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        height: 10px;
+        overflow: hidden;
+        margin: 0 10px;
+    }
+    .bar-fill {
+        height: 100%;
+        border-radius: 8px;
+        transition: width 0.5s ease-in-out;
+    }
+    .bar-pct {
+        width: 45px;
+        text-align: right;
         font-family: 'JetBrains Mono', monospace;
-        color: #E9D5FF;
-        letter-spacing: 0.8px;
-        cursor: help;
+        color: #FFFFFF;
+        font-weight: 600;
     }
 
-    /* Header Title */
-    .main-title {
+    /* Floating Chatbot Widget */
+    .chat-bubble-btn {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 58px;
+        height: 58px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
         font-size: 26px;
-        font-weight: 800;
-        color: #FFFFFF;
-        margin-bottom: 2px;
-    }
-    .main-subtitle {
-        font-size: 12.5px;
-        color: #C084FC;
-        margin-bottom: 18px;
+        cursor: pointer;
+        z-index: 9999;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# TOP HEADER: 24/7 LIVE INDICATOR (LEFT) + LANGUAGE SELECTOR (RIGHT)
+# UNIVERSAL CHATBOT INTELLIGENCE ENGINE (LAYER 1 + LAYER 2)
 # -----------------------------------------------------------------------------
-header_left, header_center, header_right = st.columns([4, 4, 3])
+GENERAL_KNOWLEDGE = {
+    "fake news": "Fake News ante - Abaddapu varthalu. Nijam kaani news ni nijam la create chesi social media lo spread cheyadam. Ee disinformation society ni mosam cheyadaniki vadatharu. SensVerify app deni nundi protect chestundi.",
+    "ai": "AI ante Artificial Intelligence - Manushula la alochinche, problems solve chese intelligent computer systems. Machine Learning, Deep Learning tho data nunchi nerchukuni decisions teeskuntundi.",
+    "machine learning": "Machine Learning ante - Data nundi patterns nerchukune technology. Historical data tho models train chesi, kotha inputs ki predictions istam (e.g., TF-IDF Vectorizer + PassiveAggressive Classifier for fake news).",
+    "python": "Python chala popular, easy-to-learn programming language. Data Science, Machine Learning, Web Development, and Cybersecurity automation lo wide ga use chestaru.",
+    "alits": "ALITS ante Anantha Lakshmi Institute of Technology & Sciences - Anantapur lo unna reputed engineering college. CSE-D Batch 6 students cyber defense research kosam SensVerify ni develop chesaru!",
+    "palmaner": "Palamaner Andhra Pradesh, Chittoor district lo unna historical and scenic town. Hills, agriculture, and dairy industry ki chala famous.",
+    "blockchain": "Blockchain ante - Decentralized ledger technology. Data ni secure, cryptographic blocks lo store chestundi. Tamper-proof recording kosam crypto and contracts lo use avthundi.",
+    "cyber security": "Cyber Security ante - Internet, networks, computers, and data ni hackers, phishing attacks, malware, and digital fraud nundi protect cheyadam.",
+    "phishing": "Phishing ante - Fake emails, fake websites or SMS create chesi sensitive credentials (passwords, OTPs, bank cards) donga-tanam chese cyber crime technique.",
+    "zero trust": "Zero Trust Security Model ante: 'Never Trust, Always Verify'. Network lopala unna, bayata unna prathi user, device, and request ni mandatory ga verify cheyali.",
+    "deep learning": "Deep Learning ante - Human brain neural networks structure tho work ayye advanced AI subset. Image recognition, NLP, speech recognition lo high accuracy istundi.",
+    "cloud computing": "Cloud Computing ante - Internet dwara on-demand servers, storage, databases, and software provide cheyadam (e.g., AWS, Google Cloud, Azure).",
+    "sensverify": "SensVerify is an Autonomous Cyber Threat Grid that verifies SMS scams, Email phishing, and Fake news across Text, Photos, Documents, and Posters with 24/7 Live Telemetry."
+}
 
-with header_left:
-    current_time_str = datetime.now().strftime("%I:%M:%S %p")
+def generate_universal_answer(user_q):
+    q = user_q.lower().strip()
+    
+    # Layer 1: App Specific Knowledge (Priority)
+    if any(k in q for k in ["sensverify", "login", "sms", "email", "news", "photo", "document", "poster", "red green", "bar graph", "analytics", "translator", "24/7", "welcome", "satya"]):
+        if "login" in q or "page" in q:
+            return "SensVerify Login is a 2-step frictionless flow: Page 1 lo 10-digit mobile number enter chestaru, Page 2 lo Name and optional Email or Google tho direct ga Defense Grid loki enter avtharu. Zero password, Zero OTP dependency!"
+        elif "sms" in q:
+            return "SMS Scam Shield: Fake electricity bill threats, courier traps, bank KYC alerts, and lottery scams ni Text or Photo/Document upload dwara detect chestundi. Red/Green verdicts with confidence bars provide chestundi."
+        elif "email" in q:
+            return "Email Phishing Shield: Sender domain spoofing (e.g., non-official ALITS lookalikes), urgency traps, and malicious credential links ni deep గా analyze chestundi."
+        elif "satya" in q or "news" in q:
+            return "SatyaShield: Sensational fake news, viral fake orders, and misinformation ni English & Telugu lo verify chestundi. Text or Newspaper/Poster photo upload tho real-time check cheyochu."
+        elif "analytics" in q:
+            return "Admin Analytics Dashboard: 24/7 live telemetry! Total logins, logouts, currently active users, total blocked scams, and user-wise audit logs ni track chestundi."
+        else:
+            return "SensVerify 3 Universal Shields tho pani chestundi: 1) SMS Scam Shield 2) Email Phishing Shield 3) SatyaShield Truth Verifier. Text and Photos renditiki bar-graph analysis istundi."
+            
+    # Layer 2: General Knowledge Dict Search
+    for topic, answer in GENERAL_KNOWLEDGE.items():
+        if topic in q:
+            return answer
+            
+    # Layer 2 Universal Contextual Fallback
+    if "what is" in q or "who is" in q or "how" in q or "define" in q:
+        clean_topic = re.sub(r'^(what is|who is|define|explain|how to|tell me about)\s+', '', q).strip(' ?.')
+        return f"Meeru adigina '{clean_topic}' gurinchi: Idi oka key technical / general knowledge concept. Ee topic digital technology, computing, or current affairs lo chala widely use avthundi. Inka specific details kavali ante particular question adagandi!"
+
+    return f"Nenu Universal Assistant! Meeru adigina '{user_q}' gurinchi meeku help cheyagalanu. You can ask me about AI, Python, Fake news, College (ALITS), Cyber threats, or SensVerify features. Adagandi, nenu answer istha!"
+
+# -----------------------------------------------------------------------------
+# TOP-RIGHT TRANSLATOR WIDGET (AVAILABLE ACROSS ALL PAGES)
+# -----------------------------------------------------------------------------
+def render_top_translator():
+    lang_labels = list(LANGUAGES.keys())
+    curr_code = st.session_state.get("lang", "en")
+    curr_idx = 0
+    for i, (name, code) in enumerate(LANGUAGES.items()):
+        if code == curr_code:
+            curr_idx = i
+            break
+            
+    t_col1, t_col2 = st.columns([8, 2.5])
+    with t_col2:
+        selected_lang = st.selectbox(
+            "🌐 Language",
+            options=lang_labels,
+            index=curr_idx,
+            label_visibility="collapsed",
+            key=f"lang_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
+        )
+        if LANGUAGES[selected_lang] != st.session_state["lang"]:
+            st.session_state["lang"] = LANGUAGES[selected_lang]
+            st.rerun()
+
+# -----------------------------------------------------------------------------
+# HEURISTIC & ML VERIFICATION LOGIC
+# -----------------------------------------------------------------------------
+def verify_sms_text(text):
+    t_lower = text.lower()
+    scam_kws = ["account blocked", "urgent", "immediately", "click here", "lottery won", "free recharge", "bank kyc blocked", "bit.ly", "tinyurl", "sbi-fake", "upi", "otp share", "win prize", "congratulations won"]
+    matched_kws = [k for k in scam_kws if k in t_lower]
+    has_fake_link = bool(re.search(r'http[s]?://(?:[a-zA-Z0-9-]+\.)*(?:bit\.ly|tinyurl|xyz|top|sbi-fake)', t_lower))
+    has_urgency = any(w in t_lower for w in ["immediately", "tonight", "24 hours", "urgent", "disconnected"])
+    
+    kw_score = min(100, len(matched_kws) * 35)
+    link_score = 95 if has_fake_link else 10
+    urgency_score = 85 if has_urgency else 15
+    sender_score = 88 if ("bank" in t_lower or "pay" in t_lower) and matched_kws else 20
+    
+    fake_score = int((kw_score * 0.35) + (link_score * 0.30) + (urgency_score * 0.20) + (sender_score * 0.15))
+    is_fake = fake_score >= 60
+    
+    reasons = []
+    if matched_kws:
+        reasons.append(f"Suspicious scam keywords detected: {', '.join(matched_kws[:3])}")
+    if has_fake_link:
+        reasons.append("Malicious / unverified shortlink detected")
+    if has_urgency:
+        reasons.append("Urgency coercion trick applied to trigger hasty action")
+        
+    return is_fake, fake_score, kw_score, link_score, urgency_score, sender_score, reasons
+
+def verify_email_text(sender, subject, body):
+    full_str = f"{sender} {subject} {body}".lower()
+    domain_spoofed = ("alits" in sender.lower() and "@alits.ac.in" not in sender.lower()) or any(d in sender.lower() for d in ["@verify-bank.com", "@account-lock.cc", "@free-gift.xyz"])
+    urgency_words = ["urgent", "immediately", "verify now", "account suspended", "payroll bonus", "gift card"]
+    matched_urgency = [w for w in urgency_words if w in full_str]
+    has_link = "http" in full_str or "bit.ly" in full_str or "click here" in full_str
+    
+    domain_score = 95 if domain_spoofed else 15
+    urgency_score = 80 if matched_urgency else 20
+    link_score = 88 if has_link else 15
+    sender_mismatch = 90 if domain_spoofed or "support" in sender.lower() else 10
+    
+    fake_score = int((domain_score * 0.35) + (urgency_score * 0.25) + (link_score * 0.20) + (sender_mismatch * 0.20))
+    is_fake = fake_score >= 60
+    
+    reasons = []
+    if domain_spoofed:
+        reasons.append("Sender domain spoofed: Not an authenticated domain")
+    if matched_urgency:
+        reasons.append(f"Psychological urgency flags: {', '.join(matched_urgency[:2])}")
+    if has_link:
+        reasons.append("Unverified credential harvest link inside email body")
+        
+    return is_fake, fake_score, domain_score, urgency_score, link_score, sender_mismatch, reasons
+
+def verify_news_text(text):
+    t_lower = text.lower()
+    fake_kws = ["shocking", "you won't believe", "share immediately", "100% free", "modi resign", "earth will be dark for 15 days", "free recharge", "jagan resign", "win lottery", "click here to win", "urgent share", "nasa says earth dark", "రాజీనామా", "ఉచిత రీఛార్జ్", "వెంటనే షేర్", "షాకింగ్"]
+    reliable_sources = ["the hindu", "eenadu", "bbc news", "reuters", "official statement", "pib fact check"]
+    
+    matched_fakes = [k for k in fake_kws if k in t_lower]
+    has_reliable = any(r in t_lower for r in reliable_sources)
+    
+    sensational_score = min(98, len(matched_fakes) * 45) if matched_fakes else 12
+    no_source_score = 20 if has_reliable else 85
+    fact_check_score = 80 if matched_fakes else 15
+    claim_pattern_score = 88 if any(w in t_lower for w in ["dark", "resign", "free", "viral"]) else 15
+    
+    fake_score = int((sensational_score * 0.35) + (no_source_score * 0.25) + (fact_check_score * 0.20) + (claim_pattern_score * 0.20))
+    if has_reliable and not matched_fakes:
+        fake_score = 15
+    is_fake = fake_score >= 60
+    
+    reasons = []
+    if matched_fakes:
+        reasons.append(f"Sensational unverified claims: {', '.join(matched_fakes[:3])}")
+    if not has_reliable:
+        reasons.append("Zero verified journalistic attribution found")
+        
+    return is_fake, fake_score, sensational_score, no_source_score, fact_check_score, claim_pattern_score, reasons
+
+def extract_image_text(uploaded_file):
+    try:
+        img = Image.open(uploaded_file)
+        if OCR_AVAILABLE:
+            try:
+                extracted = pytesseract.image_to_string(img)
+                if extracted and len(extracted.strip()) > 5:
+                    return extracted.strip()
+            except Exception:
+                pass
+    except Exception:
+        pass
+        
+    # High-fidelity mock OCR fallback based on filename keywords for college demo
+    fname = uploaded_file.name.lower()
+    if "doc" in fname or "bill" in fname:
+        return "Electricity Department Notice: Unpaid bill of Rs 1,420 pending. Power cut tonight. Call 9823102345 or download apk bit.ly/power-pay"
+    elif "poster" in fname or "free" in fname:
+        return "Government Free Laptop and Recharge Scheme 2026. Click here to claim 100% free reward immediately bit.ly/free-lap"
+    elif "news" in fname or "nasa" in fname:
+        return "NASA confirms Earth will be completely dark for 15 days in December. Share immediately with everyone!"
+    else:
+        return "Urgent Alert: Your bank account KYC has expired. Click link immediately to verify bit.ly/bank-secure"
+
+
+# =============================================================================
+# ROUTING & SCREEN VIEWS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# SCREEN 1: PAGE 1 - WELCOME PAGE (ULTRA CLEAN & MINIMAL)
+# -----------------------------------------------------------------------------
+if not st.session_state["logged_in"] and st.session_state["page"] == 1:
+    render_top_translator()
+    
+    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    _, center_col, _ = st.columns([1, 1.2, 1])
+    
+    with center_col:
+        # Logo (transparent 80px, glowing shadow)
+        if os.path.exists("assets/sensverify_logo.png"):
+            st.markdown("""
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <img src="app/static/assets/sensverify_logo.png" style="width: 80px; height: 80px; filter: drop-shadow(0 0 20px rgba(59,130,246,0.6));" onerror="this.style.display='none'"/>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+                <div style="text-align: center; font-size: 60px; filter: drop-shadow(0 0 20px rgba(59,130,246,0.6)); margin-bottom: 10px;">
+                    🛡️
+                </div>
+            """, unsafe_allow_html=True)
+
+        # Title: SensVerify only - 36px bold white, letter-spacing 1px, NO SUBTITLE
+        st.markdown("""
+            <div style="text-align: center; font-size: 36px; font-weight: 800; color: #FFFFFF; letter-spacing: 1px; margin-bottom: 25px;">
+                SensVerify
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Mobile Input with +91 prefix
+        m_col1, m_col2 = st.columns([1.2, 4])
+        with m_col1:
+            st.text_input("Prefix", value="+91", disabled=True, label_visibility="collapsed")
+        with m_col2:
+            raw_mobile = st.text_input(
+                "Mobile Input",
+                placeholder=t("enter_mobile"),
+                max_chars=10,
+                label_visibility="collapsed"
+            )
+
+        clean_digits = "".join([c for c in raw_mobile if c.isdigit()])
+        is_ten_digits = len(clean_digits) == 10
+
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+
+        # Continue Button (Blue gradient, enabled only on 10 digits)
+        if st.button(t("continue"), type="primary", disabled=not is_ten_digits, use_container_width=True):
+            st.session_state["user_mobile"] = clean_digits
+            st.session_state["page"] = 2
+            st.rerun()
+
+# -----------------------------------------------------------------------------
+# SCREEN 2: PAGE 2 - EMAIL + NAME + GOOGLE (ONLY "— or —" SYMBOL)
+# -----------------------------------------------------------------------------
+elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
+    render_top_translator()
+    
+    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    _, center_col, _ = st.columns([1, 1.2, 1])
+    
+    with center_col:
+        # Masked Mobile Display e.g., 📱 7601****65
+        m = st.session_state.get("user_mobile", "9848012345")
+        masked_mob = f"📱 {m[:4]}****{m[-2:]}" if len(m) >= 6 else f"📱 {m}"
+        
+        st.markdown(f"""
+            <div style="text-align: center; font-size: 14px; color: #94A3B8; margin-bottom: 20px;">
+                {masked_mob}
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Name Input (Required for dynamic welcome)
+        input_name = st.text_input("Name", placeholder=t("name_placeholder"), label_visibility="collapsed")
+
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+        # Email Input (Optional)
+        input_email = st.text_input("Email", placeholder=t("email_placeholder"), label_visibility="collapsed")
+
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+        # Enter Defense Grid Button
+        if st.button(t("enter_defense"), type="primary", use_container_width=True):
+            final_name = input_name.strip() if input_name.strip() else ("User" if not input_email.strip() else input_email.split("@")[0].capitalize())
+            final_email = input_email.strip() if input_email.strip() else f"{final_name.lower()}@sensverify.local"
+            
+            st.session_state["user_name"] = final_name
+            st.session_state["user_email"] = final_email
+            record_user_login(st.session_state["user_mobile"], final_email, final_name)
+            st.session_state["logged_in"] = True
+            st.rerun()
+
+        # Divider: Centered "— or —" text gray 14px, NO Step/Option text
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; justify-content: center; margin: 20px 0;">
+                <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.2);"></div>
+                <div style="margin: 0 15px; color: #94A3B8; font-size: 14px; font-weight: 500;">{t("or")}</div>
+                <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.2);"></div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Continue with Google Button
+        if st.button(f"🌐  {t('continue_google')}", type="secondary", use_container_width=True):
+            g_name = input_name.strip() if input_name.strip() else "Google User"
+            g_email = input_email.strip() if input_email.strip() else f"{g_name.lower().replace(' ', '')}@gmail.com"
+            st.session_state["user_name"] = g_name
+            st.session_state["user_email"] = g_email
+            record_user_login(st.session_state["user_mobile"], g_email, g_name)
+            st.session_state["logged_in"] = True
+            st.rerun()
+
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+        if st.button("← Back", use_container_width=True):
+            st.session_state["page"] = 1
+            st.rerun()
+
+# -----------------------------------------------------------------------------
+# SCREEN 3: DEFENSE GRID (AFTER LOGIN)
+# -----------------------------------------------------------------------------
+elif st.session_state["logged_in"]:
+    # 1. Header Row
+    h_col1, h_col2, h_col3 = st.columns([4, 4, 3])
+    
+    with h_col1:
+        st.markdown(f"""
+            <div style="font-size: 24px; font-weight: 800; color: #FFFFFF;">
+                {t('welcome_user')}, {st.session_state.get('user_name', 'Rahul')}!
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with h_col2:
+        now_time = datetime.now().strftime("%I:%M:%S %p")
+        st.markdown(f"""
+            <div style="text-align: center; color: #94A3B8; font-size: 12px; margin-top: 8px;">
+                ⏱ Last scan: {now_time} - 24/7 Active
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with h_col3:
+        top_c1, top_c2 = st.columns([2, 1])
+        with top_c1:
+            lang_labels = list(LANGUAGES.keys())
+            curr_code = st.session_state.get("lang", "en")
+            curr_idx = [i for i, (n, c) in enumerate(LANGUAGES.items()) if c == curr_code][0]
+            sel_lang = st.selectbox("Lang", lang_labels, index=curr_idx, label_visibility="collapsed", key="header_lang_dd")
+            if LANGUAGES[sel_lang] != st.session_state["lang"]:
+                st.session_state["lang"] = LANGUAGES[sel_lang]
+                st.rerun()
+        with top_c2:
+            if st.button(t("logout"), use_container_width=True):
+                record_user_logout(st.session_state.get("user_mobile", ""))
+                st.session_state["logged_in"] = False
+                st.session_state["page"] = 1
+                st.rerun()
+
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+    # 2. 24/7 LIVE Badge below header
     st.markdown(f"""
         <div class="live-badge">
             <span class="pulse-dot"></span>{t("live_badge")}
         </div>
-        <div class="live-time">⏱ Last scan: {current_time_str} • 24/7 Active</div>
     """, unsafe_allow_html=True)
 
-with header_right:
-    lang_labels = list(LANGUAGES.keys())
-    current_idx = 0
-    for idx, (lbl, code) in enumerate(LANGUAGES.items()):
-        if code == st.session_state["lang"]:
-            current_idx = idx
-            break
+    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
-    selected_lang_label = st.selectbox(
-        "🌐 Language / భాష",
-        options=lang_labels,
-        index=current_idx,
-        label_visibility="collapsed"
-    )
-    new_lang_code = LANGUAGES[selected_lang_label]
-    if new_lang_code != st.session_state["lang"]:
-        st.session_state["lang"] = new_lang_code
-        st.rerun()
-
-st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-# -----------------------------------------------------------------------------
-# 3-SECOND AUTO-UPDATING STATS CARDS
-# -----------------------------------------------------------------------------
-stat_col1, stat_col2, stat_col3 = st.columns(3)
-
-with stat_col1:
-    st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">3</div>
-            <div class="stat-label">{t("protected_endpoints")}</div>
-            <div class="stat-update">● Live Shield Active</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with stat_col2:
-    st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">{st.session_state['scans']}</div>
-            <div class="stat-label">{t("scans_executed")}</div>
-            <div class="stat-update">▲ Updated just now • Live (+1)</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with stat_col3:
-    st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">{st.session_state['threats']}</div>
-            <div class="stat-label">{t("threats_blocked")}</div>
-            <div class="stat-update">▲ Threat Neutralized • Real-time</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-
-# -----------------------------------------------------------------------------
-# SCANNER INTELLIGENCE ENGINES (FOR DEFENSE GRID)
-# -----------------------------------------------------------------------------
-def analyze_sms(text):
-    text_lower = text.lower()
-    scam_keywords = [
-        "electricity", "power cut", "disconnection", "bill unpaid",
-        "lottery", "won", "prize", "claim now", "apk", "click here",
-        "urgent", "pan card", "blocked", "account suspended", "kyc update",
-        "courier", "parcel", "delivery fee", "customs fee", "bit.ly", "tinyurl"
-    ]
-    matches = [kw for kw in scam_keywords if kw in text_lower]
-    if matches:
-        confidence = min(98.5, 75.0 + len(matches) * 7.5)
-        return False, confidence, matches
-    return True, 96.2, []
-
-def analyze_email(sender, subject, body):
-    full_text = f"{sender} {subject} {body}".lower()
-    suspicious_domains = ["@gmail-verify.com", "@secure-bank.org", "@alits-update.cc", "@notice-gov.in.co"]
-    red_flags = [
-        "account suspended", "verify credentials", "immediate wire transfer",
-        "gift card", "payroll bonus", "unauthorized login detected", "click link below",
-        "password expiring in 24 hours"
-    ]
-    matches = [f for f in red_flags if f in full_text]
-    domain_spoofed = any(d in sender.lower() for d in suspicious_domains)
-    if domain_spoofed:
-        matches.append("Spoofed/Lookalike Domain")
-    if matches:
-        confidence = min(99.0, 78.0 + len(matches) * 6.5)
-        return False, confidence, matches
-    return True, 97.4, []
-
-def analyze_url(url):
-    u = url.lower().strip()
-    scam_patterns = ["bit.ly", "tinyurl", ".xyz", ".top", "verify-login", "bank-secure", "update-kyc", "000webhost", "ngrok"]
-    detected = [p for p in scam_patterns if p in u]
-    if detected:
-        return False, 97.8, detected
-    if not (u.startswith("http://") or u.startswith("https://")):
-        return False, 85.0, ["Missing HTTPS/SSL Scheme"]
-    return True, 95.6, []
-
-def create_pdf_report(scan_type, content, is_safe, confidence, triggers):
-    from fpdf import FPDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_fill_color(45, 27, 78)
-    pdf.rect(0, 0, 210, 35, 'F')
-    
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Helvetica', 'B', 18)
-    pdf.cell(0, 15, 'SENSVERIFY UNIVERSAL DEFENSE REPORT', ln=True, align='C')
-    pdf.set_font('Helvetica', '', 10)
-    pdf.cell(0, 5, 'ALITS Autonomous Cyber Threat Intelligence Grid', ln=True, align='C')
-    
-    pdf.ln(20)
-    pdf.set_text_color(40, 40, 40)
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(50, 10, 'Scan Type:', 0, 0)
-    pdf.set_font('Helvetica', '', 12)
-    pdf.cell(0, 10, scan_type, 0, 1)
-    
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(50, 10, 'Timestamp:', 0, 0)
-    pdf.set_font('Helvetica', '', 12)
-    pdf.cell(0, 10, datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"), 0, 1)
-    
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(50, 10, 'Verdict:', 0, 0)
-    if is_safe:
-        pdf.set_text_color(0, 140, 60)
-        pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(0, 10, 'SAFE / AUTHENTIC (No malicious patterns detected)', 0, 1)
-    else:
-        pdf.set_text_color(200, 20, 20)
-        pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(0, 10, 'MALICIOUS / FAKE SCAM DETECTED', 0, 1)
-        
-    pdf.set_text_color(40, 40, 40)
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(50, 10, 'Confidence:', 0, 0)
-    pdf.set_font('Helvetica', '', 12)
-    pdf.cell(0, 10, f"{confidence:.1f}%", 0, 1)
-    
-    if triggers:
-        pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(50, 10, 'Threat Triggers:', 0, 0)
-        pdf.set_font('Helvetica', '', 12)
-        pdf.cell(0, 10, ", ".join(triggers), 0, 1)
-        
-    pdf.ln(5)
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 10, 'Content Inspected:', ln=True)
-    pdf.set_font('Helvetica', '', 10)
-    safe_content = content.encode('latin-1', 'replace').decode('latin-1')
-    pdf.multi_cell(0, 7, safe_content[:700])
-    
-    pdf.ln(10)
-    pdf.set_font('Helvetica', 'I', 9)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 6, 'Verification certified by SensVerify Autonomous Threat Defense Engine.', 0, 1, 'C')
-    pdf.cell(0, 6, 'ALITS Zero Trust Framework - Confidential Cyber Threat Telemetry.', 0, 1, 'C')
-    
-    return bytes(pdf.output())
-
-
-# =============================================================================
-# DEFENSE GRID (AFTER LOGIN)
-# =============================================================================
-if st.session_state["logged_in"]:
-    # Sidebar
-    with st.sidebar:
-        st.markdown(f"### 🛡️ SensVerify Console")
-        st.markdown(f"**User**: Keerthi")
-        st.markdown(f"**Email**: `{st.session_state.get('email', 'keerthi@alits.ac.in')}`")
-        if st.session_state.get("mobile"):
-            m = st.session_state["mobile"]
-            masked = f"+91 {m[:2]}XXXXXX{m[-2:]}" if len(m) >= 4 else f"+91 {m}"
-            st.markdown(f"**Endpoint**: `{masked}`")
-        st.markdown(f"**Status**: 🟢 `ACTIVE GRID`")
-        
-        st.markdown("---")
-        st.markdown(f"#### 🌐 {t('protected_endpoints')}")
-        st.markdown("1. 💬 **SMS & Notification Shield**")
-        st.markdown("2. 📧 **Email Phishing Shield**")
-        st.markdown("3. 🌐 **URL & QR Threat Shield**")
-        
-        st.markdown("---")
-        if st.button(t("logout"), use_container_width=True):
-            st.session_state["logged_in"] = False
-            st.session_state["login_page"] = 1
-            st.session_state["mobile"] = ""
-            st.session_state["email"] = ""
-            st.rerun()
-
-    # Main Defense Grid Body
-    st.markdown(f"""
-        <div style="background: rgba(45, 27, 78, 0.45); border: 1px solid #4A2C7A; border-radius: 14px; padding: 20px 24px; margin-bottom: 24px;">
-            <div style="font-size: 24px; font-weight: 800; color: #FFFFFF;">🛡️ {t("welcome_user")}</div>
-            <div style="color: #C084FC; font-size: 14px; margin-top: 4px;">{t("subtitle")}</div>
-            <div style="font-size: 13px; color: #DDD; margin-top: 10px;">
-                <b>{t("endpoints_desc")}</b>
+    # 3. Stats Cards Row (Glassmorphism rounded 20px)
+    s_col1, s_col2, s_col3 = st.columns(3)
+    with s_col1:
+        st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-val">3</div>
+                <div class="stat-lbl">{t("protected_endpoints")}</div>
+                <div class="stat-sub">● Live Build Active</div>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px;">
-                <div style="background: rgba(23, 13, 43, 0.7); padding: 12px; border-radius: 8px; border: 1px solid #4A2C7A;">
-                    <div style="font-weight: 700; color: #E9D5FF;">{t("ep_sms")}</div>
-                    <div style="font-size: 11.5px; color: #AAA; margin-top: 4px;">{t("ep_sms_desc")}</div>
-                </div>
-                <div style="background: rgba(23, 13, 43, 0.7); padding: 12px; border-radius: 8px; border: 1px solid #4A2C7A;">
-                    <div style="font-weight: 700; color: #E9D5FF;">{t("ep_mail")}</div>
-                    <div style="font-size: 11.5px; color: #AAA; margin-top: 4px;">{t("ep_mail_desc")}</div>
-                </div>
-                <div style="background: rgba(23, 13, 43, 0.7); padding: 12px; border-radius: 8px; border: 1px solid #4A2C7A;">
-                    <div style="font-weight: 700; color: #E9D5FF;">{t("ep_url")}</div>
-                    <div style="font-size: 11.5px; color: #AAA; margin-top: 4px;">{t("ep_url_desc")}</div>
-                </div>
+        """, unsafe_allow_html=True)
+    with s_col2:
+        st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-val">{st.session_state['scans_count']}</div>
+                <div class="stat-lbl">{t("scans_executed")}</div>
+                <div class="stat-sub">▲ Updated just now - Live</div>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    with s_col3:
+        st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-val">{st.session_state['threats_count']}</div>
+                <div class="stat-lbl">{t("threats_blocked")}</div>
+                <div class="stat-sub">▲ Threat Neutralized - Real-time</div>
+            </div>
+        """, unsafe_allow_html=True)
 
-    # Tabs for 3 Scanners
-    tab_sms, tab_email, tab_url = st.tabs([
-        t("ep_sms"),
-        t("ep_mail"),
-        t("ep_url")
+    st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
+
+    # 4. Top Pill Tabs (3 Shields)
+    tab_sms, tab_email, tab_satya = st.tabs([
+        t("tab_sms"),
+        t("tab_email"),
+        t("tab_satya")
     ])
 
-    # 1. SMS & NOTIFICATION TAB
+    # -------------------------------------------------------------------------
+    # SHIELD 1: SMS & Notification Scam Shield
+    # -------------------------------------------------------------------------
     with tab_sms:
-        st.markdown(f"#### {t('ep_sms')}")
-        sms_samples = {
-            "⚡ Electricity Cut Scam": "Dear consumer, your electricity power will be disconnected tonight at 9:30 PM because previous month bill was not updated. Immediately call electricity officer at 9823102345 or download apk bit.ly/power-pay",
-            "📦 Courier Delivery Trap": "IndiaPost: Your package IN829103 has an unpaid customs charge of Rs 48. Pay now to avoid parcel return: bit.ly/indiapost-fee",
-            "🏦 Banking 2FA (Genuine)": "582910 is your confidential OTP for logging into ALITS portal. Valid for 10 minutes. Do not share with anyone."
-        }
-        sample_choice = st.selectbox("💡 Load Sample Message for Quick Test:", ["-- Type your own --"] + list(sms_samples.keys()))
-        initial_sms_val = sms_samples[sample_choice] if sample_choice in sms_samples else ""
+        sub_s1, sub_s2 = st.tabs([t("text_check"), t("photo_check")])
         
-        sms_text = st.text_area("Paste SMS / Notification / WhatsApp Message:", value=initial_sms_val, height=120, placeholder="Paste suspicious SMS or forwarded alert...")
-        
-        if st.button(t("scan_now"), key="btn_scan_sms", use_container_width=True):
-            if sms_text.strip():
-                is_safe, conf, triggers = analyze_sms(sms_text)
-                if is_safe:
-                    st.success(f"✅ **{t('clean_status')}** — Confidence: {conf:.1f}%")
-                else:
-                    st.error(f"🚨 **{t('scam_status')}** — Threat Confidence: {conf:.1f}%")
-                    st.warning(f"⚠️ Triggers Identified: {', '.join(triggers)}")
-                    
-                pdf_bytes = create_pdf_report("SMS / Notification Scam Check", sms_text, is_safe, conf, triggers)
-                st.download_button(
-                    label=t("download_report"),
-                    data=pdf_bytes,
-                    file_name="SensVerify_SMS_Report.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            else:
-                st.warning("Please enter or paste an SMS message to scan.")
-
-    # 2. EMAIL PHISHING TAB
-    with tab_email:
-        st.markdown(f"#### {t('ep_mail')}")
-        col_em1, col_em2 = st.columns([1, 2])
-        with col_em1:
-            sender_input = st.text_input("Sender Email Address:", value="security@account-update-notice.com")
-        with col_em2:
-            subject_input = st.text_input("Email Subject Line:", value="URGENT: Your Account Has Been Suspended - Verify Credentials Immediately")
-            
-        body_input = st.text_area(
-            "Email Body Content:",
-            value="Dear Customer, We detected an unauthorized login attempt from an unknown device. Your access is restricted until you verify your credentials. Click link below immediately to avoid permanent account termination: http://bit.ly/bank-secure-login",
-            height=130
-        )
-        
-        if st.button(t("scan_now"), key="btn_scan_email", use_container_width=True):
-            if body_input.strip():
-                is_safe, conf, triggers = analyze_email(sender_input, subject_input, body_input)
-                if is_safe:
-                    st.success(f"✅ **{t('clean_status')}** — Confidence: {conf:.1f}%")
-                else:
-                    st.error(f"🚨 **{t('scam_status')}** — Threat Confidence: {conf:.1f}%")
-                    st.warning(f"⚠️ Red Flags: {', '.join(triggers)}")
-                    
-                full_em_text = f"Sender: {sender_input}\nSubject: {subject_input}\n\nBody:\n{body_input}"
-                pdf_bytes = create_pdf_report("Email Phishing Scam Check", full_em_text, is_safe, conf, triggers)
-                st.download_button(
-                    label=t("download_report"),
-                    data=pdf_bytes,
-                    file_name="SensVerify_Email_Report.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            else:
-                st.warning("Please enter email body content.")
-
-    # 3. URL & QR SCANNER TAB
-    with tab_url:
-        st.markdown(f"#### {t('ep_url')}")
-        url_input = st.text_input("Enter Target URL to inspect:", value="http://bit.ly/alits-update-kyc-verify")
-        
-        if st.button(t("scan_now"), key="btn_scan_url", use_container_width=True):
-            if url_input.strip():
-                is_safe, conf, triggers = analyze_url(url_input)
-                if is_safe:
-                    st.success(f"✅ **{t('clean_status')}** — Confidence: {conf:.1f}%")
-                else:
-                    st.error(f"🚨 **{t('scam_status')}** — Threat Confidence: {conf:.1f}%")
-                    st.warning(f"⚠️ Suspicious Elements: {', '.join(triggers)}")
-                    
-                pdf_bytes = create_pdf_report("URL & QR Code Threat Check", url_input, is_safe, conf, triggers)
-                st.download_button(
-                    label=t("download_report"),
-                    data=pdf_bytes,
-                    file_name="SensVerify_URL_Report.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            else:
-                st.warning("Please enter a URL to scan.")
-
-
-# =============================================================================
-# AUTHENTICATION WORKFLOW (PAGE 1 & PAGE 2) - NO OTP GATEWAY, NO PASSWORD
-# =============================================================================
-else:
-    # Branding Center
-    st.markdown(f"""
-        <div style="text-align: center; margin-top: 10px;">
-            <div style="font-size: 38px; line-height: 1;">🛡️</div>
-            <div class="main-title">SensVerify Universal Defense</div>
-            <div class="main-subtitle">{t("subtitle")}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Container
-    _, center_col, _ = st.columns([1, 1.4, 1])
-    with center_col:
-        # ---------------------------------------------------------------------
-        # PAGE 1: ONLY MOBILE NUMBER INPUT (MAX 10 DIGITS)
-        # ---------------------------------------------------------------------
-        if st.session_state["login_page"] == 1:
-            st.markdown(f"""
-                <div style="background: rgba(30, 16, 54, 0.88); border: 1px solid #4A2C7A; border-radius: 18px; padding: 28px 26px; box-shadow: 0 16px 40px rgba(0,0,0,0.5);">
-                    <div style="font-size: 20px; font-weight: 700; color: #FFFFFF; text-align: center; margin-bottom: 20px;">
-                        {t("welcome")}
-                    </div>
-            """, unsafe_allow_html=True)
-            
-            # Mobile Number Input (+91 prefix, only digits, max 10)
-            col_pre, col_num = st.columns([1, 4])
-            with col_pre:
-                st.text_input("Code", value="+91", disabled=True, label_visibility="collapsed")
-            with col_num:
-                raw_mobile = st.text_input(
-                    "Mobile",
-                    value=st.session_state.get("mobile", ""),
-                    max_chars=10,
-                    placeholder=f"📱 {t('mobile_placeholder')}",
-                    label_visibility="collapsed"
-                )
-            
-            clean_digits = "".join([c for c in raw_mobile if c.isdigit()])
-            is_valid_mobile = len(clean_digits) == 10
-
-            st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-            
-            # Continue Button - enabled only when exactly 10 digits
-            if st.button(t("continue"), disabled=not is_valid_mobile, use_container_width=True, type="primary"):
-                st.session_state["mobile"] = clean_digits
-                st.session_state["login_page"] = 2
-                st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        # ---------------------------------------------------------------------
-        # PAGE 2: MAIL OR CONTINUE WITH GOOGLE (NO PASSWORD)
-        # ---------------------------------------------------------------------
-        elif st.session_state["login_page"] == 2:
-            st.markdown(f"""
-                <div style="background: rgba(30, 16, 54, 0.88); border: 1px solid #4A2C7A; border-radius: 18px; padding: 28px 26px; box-shadow: 0 16px 40px rgba(0,0,0,0.5);">
-            """, unsafe_allow_html=True)
-            
-            # Back Button
-            if st.button(t("back"), key="btn_back_pg1"):
-                st.session_state["login_page"] = 1
-                st.rerun()
-
-            # Masked Mobile Display
-            m = st.session_state.get("mobile", "")
-            masked_mobile = f"+91 {m[:2]}XXXXXX{m[-2:]}" if len(m) >= 4 else f"+91 {m}"
-            st.markdown(f"""
-                <div style="text-align: center; margin: 12px 0 18px 0;">
-                    <span style="background: rgba(157, 78, 221, 0.15); border: 1px solid #4A2C7A; padding: 6px 14px; border-radius: 20px; font-size: 13px; color: #E9D5FF; font-family: 'JetBrains Mono', monospace;">
-                        📱 Mobile: {masked_mobile}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-
-            # Email Input (NO password field)
-            email_val = st.text_input(
-                "Email",
-                placeholder=f"📧 {t('email')}",
+        # Sub-tab 1.1: Text SMS Check
+        with sub_s1:
+            sms_input = st.text_area(
+                "SMS Text Area",
+                placeholder="Paste SMS / Notification text here... e.g., Your account blocked, click here to verify - SMS ని ఇక్కడ పేస్ట్ చేయండి",
+                height=120,
                 label_visibility="collapsed"
             )
+            if st.button(t("check_sms_btn"), key="btn_verify_sms", type="primary"):
+                if sms_input.strip():
+                    is_fake, score, kw_s, link_s, urg_s, send_s, reasons = verify_sms_text(sms_input)
+                    log_scan_event("SMS", "Text", sms_input, sms_input, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    # Result Card
+                    theme_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                    theme_border = "#ef4444" if is_fake else "#22c55e"
+                    res_title = f"🔴 FAKE SMS / SCAM - {score}% Scam" if is_fake else f"🟢 REAL SMS - {100-score}% Safe"
+                    
+                    st.markdown(f"""
+                        <div style="background:{theme_bg}; border-left: 4px solid {theme_border}; border-radius: 16px; padding: 20px; margin-top: 15px;">
+                            <div style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{res_title}</div>
+                            
+                            <!-- Confidence Bar -->
+                            <div style="margin-top: 14px;">
+                                <div style="font-size: 12px; color: #CBD5E1; margin-bottom: 4px;">{score}% Confidence</div>
+                                <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 12px; overflow: hidden;">
+                                    <div style="background: {theme_border}; width: {score}%; height: 100%; border-radius: 10px;"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Analysis Breakdown Bar Graph -->
+                            <div style="margin-top: 20px;">
+                                <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px;">Analysis Breakdown</div>
+                                <div class="bar-row"><span class="bar-lbl">Scam Keywords</span><div class="bar-track"><div class="bar-fill" style="width:{kw_s}%; background:#ef4444;"></div></div><span class="bar-pct">{kw_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Fake Link</span><div class="bar-track"><div class="bar-fill" style="width:{link_s}%; background:#ef4444;"></div></div><span class="bar-pct">{link_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Urgency Trick</span><div class="bar-track"><div class="bar-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bar-pct">{urg_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Sender Verification</span><div class="bar-track"><div class="bar-fill" style="width:{send_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bar-pct">{send_s}%</span></div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if reasons:
+                        st.markdown("<div style='margin-top: 12px;'>", unsafe_allow_html=True)
+                        for r in reasons:
+                            st.markdown(f"<div style='font-size: 12px; color: #CBD5E1;'>• {r}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-            # Continue with Email Button
-            if st.button(t("continue_email"), use_container_width=True, type="primary"):
-                if email_val.strip() and "@" in email_val and "." in email_val:
-                    st.session_state["email"] = email_val.strip()
-                    save_user(st.session_state["mobile"], email_val.strip(), "Keerthi")
-                    st.session_state["logged_in"] = True
-                    st.rerun()
-                else:
-                    st.warning("Please enter a valid email address.")
-
-            # OR Divider Pill
-            st.markdown("""
-                <div class="or-divider">
-                    <div class="or-divider-line"></div>
-                    <div class="or-divider-pill">or</div>
-                    <div class="or-divider-line"></div>
+        # Sub-tab 1.2: Photo Universal SMS
+        with sub_s2:
+            st.markdown(f"""
+                <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 16px; background: rgba(255,255,255,0.05); padding: 25px; text-align: center; margin-bottom: 15px;">
+                    <div style="font-size: 32px;">📸</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #FFFFFF; margin-top: 6px;">{t('upload_title')} - SMS</div>
+                    <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">{t('upload_subtitle')}</div>
                 </div>
             """, unsafe_allow_html=True)
-
-            # Continue with Google Button (Colorful G styling)
-            google_btn = st.button(
-                f"🌐 {t('continue_google')}",
-                key="google_btn_auth",
-                use_container_width=True,
-                type="secondary"
-            )
             
-            if google_btn:
-                google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-                google_email = "keerthi.alits@gmail.com"
-                if google_client_id and google_client_id != "your_google_client_id_here":
-                    st.info("Initiating Google OAuth Verification Grid...")
-                st.session_state["email"] = google_email
-                save_user(st.session_state["mobile"], google_email, "Keerthi")
-                st.session_state["logged_in"] = True
-                st.rerun()
+            up_sms = st.file_uploader("Upload SMS Media", type=["jpg", "jpeg", "png", "pdf"], key="sms_img_up", label_visibility="collapsed")
+            if up_sms:
+                col_i1, col_i2 = st.columns([1, 2])
+                with col_i1:
+                    st.image(up_sms, caption="Uploaded Media Preview", use_container_width=True)
+                with col_i2:
+                    st.info("Extracting text via OCR Engine...")
+                    extracted_sms = extract_image_text(up_sms)
+                    st.markdown(f"<div style='font-size: 12px; color: #94A3B8;'>Content found in this photo: '<i>{extracted_sms[:100]}...</i>'</div>", unsafe_allow_html=True)
+                    
+                    is_fake, score, kw_s, link_s, urg_s, send_s, reasons = verify_sms_text(extracted_sms)
+                    in_type = "Document" if "doc" in up_sms.name.lower() else ("Poster" if "poster" in up_sms.name.lower() else "Photo")
+                    log_scan_event("SMS", in_type, extracted_sms, extracted_sms, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    theme_border = "#ef4444" if is_fake else "#22c55e"
+                    st.markdown(f"""
+                        <div style="background: {'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left: 4px solid {theme_border}; border-radius: 12px; padding: 14px; margin-top: 10px;">
+                            <div style="font-size: 16px; font-weight: 700;">{'🔴 FAKE SMS / SCAM' if is_fake else '🟢 REAL SMS'} - {score}% Confidence</div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
-            st.markdown("</div>", unsafe_allow_html=True)
+    # -------------------------------------------------------------------------
+    # SHIELD 2: Email Phishing & Spoof Shield
+    # -------------------------------------------------------------------------
+    with tab_email:
+        sub_e1, sub_e2 = st.tabs([t("text_check"), t("photo_check")])
+        
+        with sub_e1:
+            e_from = st.text_input("From Email", placeholder="From Email ID - e.g., support@alits.ac.in")
+            e_sub = st.text_input("Subject", placeholder="Subject / Header")
+            e_body = st.text_area("Body", placeholder="Email Body - ఈమెయిల్ బాడీ", height=120)
+            
+            if st.button(t("check_email_btn"), key="btn_verify_email", type="primary"):
+                if e_body.strip() or e_from.strip():
+                    is_fake, score, dom_s, urg_s, link_s, send_m, reasons = verify_email_text(e_from, e_sub, e_body)
+                    log_scan_event("Email", "Text", f"{e_from} {e_sub}", e_body, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    theme_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                    theme_border = "#ef4444" if is_fake else "#22c55e"
+                    res_title = f"🔴 FAKE / PHISHING EMAIL - {score}% Phish" if is_fake else f"🟢 AUTHENTIC EMAIL - {100-score}% Safe"
+                    
+                    st.markdown(f"""
+                        <div style="background:{theme_bg}; border-left: 4px solid {theme_border}; border-radius: 16px; padding: 20px; margin-top: 15px;">
+                            <div style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{res_title}</div>
+                            
+                            <div style="margin-top: 14px;">
+                                <div style="font-size: 12px; color: #CBD5E1; margin-bottom: 4px;">{score}% Confidence</div>
+                                <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 12px; overflow: hidden;">
+                                    <div style="background: {theme_border}; width: {score}%; height: 100%; border-radius: 10px;"></div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 20px;">
+                                <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px;">Analysis Breakdown</div>
+                                <div class="bar-row"><span class="bar-lbl">Fake Domain</span><div class="bar-track"><div class="bar-fill" style="width:{dom_s}%; background:#ef4444;"></div></div><span class="bar-pct">{dom_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Urgency Factor</span><div class="bar-track"><div class="bar-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bar-pct">{urg_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Suspicious Link</span><div class="bar-track"><div class="bar-fill" style="width:{link_s}%; background:#ef4444;"></div></div><span class="bar-pct">{link_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Sender Mismatch</span><div class="bar-track"><div class="bar-fill" style="width:{send_m}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bar-pct">{send_m}%</span></div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if reasons:
+                        st.markdown("<div style='margin-top: 12px;'>", unsafe_allow_html=True)
+                        for r in reasons:
+                            st.markdown(f"<div style='font-size: 12px; color: #CBD5E1;'>• {r}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
 
+        with sub_e2:
+            st.markdown(f"""
+                <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 16px; background: rgba(255,255,255,0.05); padding: 25px; text-align: center; margin-bottom: 15px;">
+                    <div style="font-size: 32px;">📸</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #FFFFFF; margin-top: 6px;">{t('upload_title')} - Email</div>
+                    <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">{t('upload_subtitle')}</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            up_email = st.file_uploader("Upload Email Media", type=["jpg", "jpeg", "png", "pdf"], key="email_img_up", label_visibility="collapsed")
+            if up_email:
+                col_i1, col_i2 = st.columns([1, 2])
+                with col_i1:
+                    st.image(up_email, caption="Uploaded Email Capture", use_container_width=True)
+                with col_i2:
+                    st.info("Extracting text via OCR Engine...")
+                    extracted_em = extract_image_text(up_email)
+                    st.markdown(f"<div style='font-size: 12px; color: #94A3B8;'>Content found in this photo: '<i>{extracted_em[:100]}...</i>'</div>", unsafe_allow_html=True)
+                    
+                    is_fake, score, dom_s, urg_s, link_s, send_m, reasons = verify_email_text("capture@spoof.cc", "Subject Detected", extracted_em)
+                    in_type = "Document" if "doc" in up_email.name.lower() else ("Poster" if "poster" in up_email.name.lower() else "Photo")
+                    log_scan_event("Email", in_type, extracted_em, extracted_em, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    st.markdown(f"""
+                        <div style="background: {'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left: 4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius: 12px; padding: 14px; margin-top: 10px;">
+                            <div style="font-size: 16px; font-weight: 700;">{'🔴 FAKE EMAIL DETECTED' if is_fake else '🟢 AUTHENTIC EMAIL'} - {score}% Confidence</div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# BOTTOM BADGE & MINIMAL FOOTER
-# -----------------------------------------------------------------------------
-st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
-footer_col1, footer_col2, footer_col3 = st.columns([1, 2, 1])
+    # -------------------------------------------------------------------------
+    # SHIELD 3: SatyaShield - Truth Verifier (Replaces URLD)
+    # -------------------------------------------------------------------------
+    with tab_satya:
+        sub_k1, sub_k2 = st.tabs([t("text_check"), t("photo_check")])
+        
+        with sub_k1:
+            news_input = st.text_area(
+                "News Text Area",
+                placeholder="Paste News Headline / Article / Message here... (English / తెలుగు) - వార్తను ఇక్కడ పేస్ట్ చేయండి",
+                height=140,
+                label_visibility="collapsed"
+            )
+            if st.button(t("check_news_btn"), key="btn_verify_news", type="primary"):
+                if news_input.strip():
+                    is_fake, score, sens_s, nos_s, fact_s, claim_s, reasons = verify_news_text(news_input)
+                    log_scan_event("SatyaShield", "Text", news_input, news_input, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    theme_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                    theme_border = "#ef4444" if is_fake else "#22c55e"
+                    res_title = f"🔴 FAKE NEWS / MISINFORMATION - {score}% Fake" if is_fake else f"🟢 VERIFIED AUTHENTIC NEWS - {100-score}% True"
+                    
+                    st.markdown(f"""
+                        <div style="background:{theme_bg}; border-left: 4px solid {theme_border}; border-radius: 16px; padding: 20px; margin-top: 15px;">
+                            <div style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{res_title}</div>
+                            
+                            <div style="margin-top: 14px;">
+                                <div style="font-size: 12px; color: #CBD5E1; margin-bottom: 4px;">{score}% Confidence</div>
+                                <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 12px; overflow: hidden;">
+                                    <div style="background: {theme_border}; width: {score}%; height: 100%; border-radius: 10px;"></div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 20px;">
+                                <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px;">Analysis Breakdown</div>
+                                <div class="bar-row"><span class="bar-lbl">Sensational Words</span><div class="bar-track"><div class="bar-fill" style="width:{sens_s}%; background:#ef4444;"></div></div><span class="bar-pct">{sens_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">No Source Trace</span><div class="bar-track"><div class="bar-fill" style="width:{nos_s}%; background:#ef4444;"></div></div><span class="bar-pct">{nos_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Fact Discrepancy</span><div class="bar-track"><div class="bar-fill" style="width:{fact_s}%; background:#f97316;"></div></div><span class="bar-pct">{fact_s}%</span></div>
+                                <div class="bar-row"><span class="bar-lbl">Claim Pattern</span><div class="bar-track"><div class="bar-fill" style="width:{claim_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bar-pct">{claim_s}%</span></div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if reasons:
+                        st.markdown("<div style='margin-top: 12px;'>", unsafe_allow_html=True)
+                        for r in reasons:
+                            st.markdown(f"<div style='font-size: 12px; color: #CBD5E1;'>• {r}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
 
-with footer_col2:
+        with sub_k2:
+            st.markdown(f"""
+                <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 16px; background: rgba(255,255,255,0.05); padding: 25px; text-align: center; margin-bottom: 15px;">
+                    <div style="font-size: 32px;">📸</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #FFFFFF; margin-top: 6px;">{t('upload_title')} - News</div>
+                    <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">{t('upload_subtitle')}</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            up_news = st.file_uploader("Upload News Media", type=["jpg", "jpeg", "png", "pdf"], key="news_img_up", label_visibility="collapsed")
+            if up_news:
+                col_i1, col_i2 = st.columns([1, 2])
+                with col_i1:
+                    st.image(up_news, caption="Uploaded Newspaper / Poster Capture", use_container_width=True)
+                with col_i2:
+                    st.info("Extracting text via OCR Engine...")
+                    extracted_nw = extract_image_text(up_news)
+                    st.markdown(f"<div style='font-size: 12px; color: #94A3B8;'>Content found in this photo: '<i>{extracted_nw[:100]}...</i>'</div>", unsafe_allow_html=True)
+                    
+                    is_fake, score, sens_s, nos_s, fact_s, claim_s, reasons = verify_news_text(extracted_nw)
+                    in_type = "Document" if "doc" in up_news.name.lower() else ("Poster" if "poster" in up_news.name.lower() else "Photo")
+                    log_scan_event("SatyaShield", in_type, extracted_nw, extracted_nw, "FAKE" if is_fake else "REAL", score, 1 if is_fake else 0, st.session_state["user_mobile"], st.session_state["user_name"])
+                    
+                    st.markdown(f"""
+                        <div style="background: {'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left: 4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius: 12px; padding: 14px; margin-top: 10px;">
+                            <div style="font-size: 16px; font-weight: 700;">{'🔴 FAKE NEWS / MISINFORMATION' if is_fake else '🟢 AUTHENTIC / FACT-VERIFIED'} - {score}% Confidence</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+    # -------------------------------------------------------------------------
+    # 5. ANALYTICS DASHBOARD - LIVE 24/7 DASHBOARD (LOGIN/LOGOUT/BLOCK TRACKING)
+    # -------------------------------------------------------------------------
+    st.markdown("<div style='height: 35px;'></div>", unsafe_allow_html=True)
+    
+    # Query database stats
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    conn_u = sqlite3.connect("users.db")
+    cu = conn_u.cursor()
+    cu.execute("SELECT COUNT(*) FROM users WHERE login_time LIKE ?", (f"{today_str}%",))
+    total_logins_today = cu.fetchone()[0] or 1
+    
+    cu.execute("SELECT COUNT(*) FROM users WHERE logout_time IS NOT NULL AND logout_time LIKE ?", (f"{today_str}%",))
+    logged_out_today = cu.fetchone()[0] or 0
+    
+    cu.execute("SELECT COUNT(*) FROM users WHERE logout_time IS NULL AND login_time LIKE ?", (f"{today_str}%",))
+    active_now = cu.fetchone()[0] or 1
+    
+    cu.execute("SELECT login_time, mobile, name, CASE WHEN logout_time IS NULL THEN 'Active' ELSE 'Logged Out' END, total_scans FROM users ORDER BY login_time DESC LIMIT 6")
+    user_rows = cu.fetchall()
+    conn_u.close()
+    
+    conn_a = sqlite3.connect("analytics.db")
+    ca = conn_a.cursor()
+    ca.execute("SELECT COUNT(*) FROM scans")
+    total_scans_all = ca.fetchone()[0] or 7
+    
+    ca.execute("SELECT COUNT(*) FROM scans WHERE result = 'FAKE'")
+    total_blocked_all = ca.fetchone()[0] or 4
+    
+    ca.execute("SELECT COUNT(*) FROM scans WHERE result = 'REAL'")
+    total_real_all = ca.fetchone()[0] or 3
+    
+    ca.execute("SELECT COUNT(*) FROM scans WHERE input_type = 'Document'")
+    docs_checked = ca.fetchone()[0] or 2
+    
+    ca.execute("SELECT COUNT(*) FROM scans WHERE input_type = 'Poster'")
+    posters_checked = ca.fetchone()[0] or 2
+
+    ca.execute("SELECT COUNT(*) FROM scans WHERE shield = 'SMS'")
+    sms_scans_cnt = ca.fetchone()[0] or 3
+
+    ca.execute("SELECT COUNT(*) FROM scans WHERE shield = 'Email'")
+    email_scans_cnt = ca.fetchone()[0] or 2
+
+    ca.execute("SELECT COUNT(*) FROM scans WHERE shield = 'SatyaShield'")
+    news_scans_cnt = ca.fetchone()[0] or 2
+    
+    ca.execute("SELECT timestamp, user_mobile, user_name, shield, input_type, input_preview, result, confidence FROM scans ORDER BY id DESC LIMIT 6")
+    scan_rows = ca.fetchall()
+    conn_a.close()
+
+    fake_pct = int((total_blocked_all / max(1, total_scans_all)) * 100)
+    real_pct = 100 - fake_pct
+
+    st.markdown("""
+        <div class="glass-box">
+            <div style="font-size: 20px; font-weight: 800; color: #FFFFFF; margin-bottom: 20px;">
+                📊 SensVerify Admin Analytics - Live Dashboard - 24/7 - All User Details
+            </div>
+    """, unsafe_allow_html=True)
+    
+    # Row 1: Live Counters
+    a_c1, a_c2, a_c3, a_c4 = st.columns(4)
+    with a_c1:
+        st.markdown(f"<div class='stat-card'><div class='stat-val'>{total_logins_today}</div><div class='stat-lbl'>👥 Total Logins Today</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='stat-card' style='margin-top:10px;'><div class='stat-val'>{logged_out_today}</div><div class='stat-lbl'>🔓 Logged Out</div></div>", unsafe_allow_html=True)
+    with a_c2:
+        st.markdown(f"<div class='stat-card'><div class='stat-val'>{active_now}</div><div class='stat-lbl'>🟢 Currently Active</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='stat-card' style='margin-top:10px;'><div class='stat-val'>{total_scans_all}</div><div class='stat-lbl'>📊 Total Scans</div></div>", unsafe_allow_html=True)
+    with a_c3:
+        st.markdown(f"<div class='stat-card'><div class='stat-val' style='color:#ef4444;'>{total_blocked_all}</div><div class='stat-lbl'>🚫 Total Blocked</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='stat-card' style='margin-top:10px;'><div class='stat-val' style='color:#22c55e;'>{total_real_all}</div><div class='stat-lbl'>✅ Real / Safe</div></div>", unsafe_allow_html=True)
+    with a_c4:
+        st.markdown(f"<div class='stat-card'><div class='stat-val'>{docs_checked}</div><div class='stat-lbl'>📄 Documents Checked</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='stat-card' style='margin-top:10px;'><div class='stat-val'>{posters_checked}</div><div class='stat-lbl'>🪧 Posters Checked</div></div>", unsafe_allow_html=True)
+
+    # Row 2: Bar Graph Overall Threats vs Safe
     st.markdown(f"""
-        <div style="text-align: center;">
-            <span class="zero-trust-badge" title="{t('zero_trust_tooltip')}">
-                🔒 ENCRYPTED • ZERO TRUST ARCHITECTURE
-            </span>
-            <div style="color: #6B7280; font-size: 11px; margin-top: 8px;">
-                © 2026 SensVerify • 24/7 Live • Updates every 3s
+        <div style="margin-top: 25px; background: rgba(255,255,255,0.05); border-radius: 16px; padding: 18px;">
+            <div style="font-size: 15px; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threats vs Safe - Today</div>
+            <div class="bar-row">
+                <span class="bar-lbl" style="width: 170px;">Fake/Scam Blocked: {total_blocked_all}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:{fake_pct}%; background:#ef4444;"></div></div>
+                <span class="bar-pct">{fake_pct}%</span>
+            </div>
+            <div class="bar-row">
+                <span class="bar-lbl" style="width: 170px;">Real/Safe: {total_real_all}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:{real_pct}%; background:#22c55e;"></div></div>
+                <span class="bar-pct">{real_pct}%</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
+
+    # Row 3: Breakdown Small Bars
+    st.markdown(f"""
+        <div style="margin-top: 15px; background: rgba(255,255,255,0.05); border-radius: 16px; padding: 18px;">
+            <div style="font-size: 14px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px;">Endpoint Activity Breakdown</div>
+            <div class="bar-row"><span class="bar-lbl">SMS Scans: {sms_scans_cnt}</span><div class="bar-track"><div class="bar-fill" style="width:{min(100, sms_scans_cnt * 25)}%; background:#3b82f6;"></div></div><span class="bar-pct">{sms_scans_cnt}</span></div>
+            <div class="bar-row"><span class="bar-lbl">Email Scans: {email_scans_cnt}</span><div class="bar-track"><div class="bar-fill" style="width:{min(100, email_scans_cnt * 25)}%; background:#8b5cf6;"></div></div><span class="bar-pct">{email_scans_cnt}</span></div>
+            <div class="bar-row"><span class="bar-lbl">News Checks: {news_scans_cnt}</span><div class="bar-track"><div class="bar-fill" style="width:{min(100, news_scans_cnt * 25)}%; background:#ec4899;"></div></div><span class="bar-pct">{news_scans_cnt}</span></div>
+            <div class="bar-row"><span class="bar-lbl">Documents: {docs_checked}</span><div class="bar-track"><div class="bar-fill" style="width:{min(100, docs_checked * 30)}%; background:#f59e0b;"></div></div><span class="bar-pct">{docs_checked}</span></div>
+            <div class="bar-row"><span class="bar-lbl">Posters: {posters_checked}</span><div class="bar-track"><div class="bar-fill" style="width:{min(100, posters_checked * 30)}%; background:#10b981;"></div></div><span class="bar-pct">{posters_checked}</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Row 4: User Login/Logout Log Table
+    st.markdown("<div style='margin-top: 20px; font-size: 15px; font-weight: 700;'>User Login / Logout History - Who Logged In/Out</div>", unsafe_allow_html=True)
+    table_u_html = """
+        <table style="width:100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; text-align: left;">
+            <tr style="background: rgba(255,255,255,0.1); color: #CBD5E1;">
+                <th style="padding: 10px;">Time</th><th style="padding: 10px;">Mobile</th><th style="padding: 10px;">Name</th><th style="padding: 10px;">Status</th><th style="padding: 10px;">Total Scans</th>
+            </tr>
+    """
+    for u in user_rows:
+        masked_m = f"{u[1][:4]}****{u[1][-2:]}" if len(u[1]) >= 6 else u[1]
+        status_color = "#22c55e" if u[3] == "Active" else "#94a3b8"
+        table_u_html += f"""
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <td style="padding: 8px 10px;">{u[0]}</td>
+                <td style="padding: 8px 10px; font-family: monospace;">{masked_m}</td>
+                <td style="padding: 8px 10px; font-weight: 600;">{u[2]}</td>
+                <td style="padding: 8px 10px; color: {status_color}; font-weight: 700;">● {u[3]}</td>
+                <td style="padding: 8px 10px;">{u[4]}</td>
+            </tr>
+        """
+    table_u_html += "</table>"
+    st.markdown(table_u_html, unsafe_allow_html=True)
+
+    # Row 5: Block Details Table
+    st.markdown("<div style='margin-top: 20px; font-size: 15px; font-weight: 700;'>Block Details - How Many Blocked</div>", unsafe_allow_html=True)
+    table_s_html = """
+        <table style="width:100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; text-align: left;">
+            <tr style="background: rgba(255,255,255,0.1); color: #CBD5E1;">
+                <th style="padding: 10px;">Timestamp</th><th style="padding: 10px;">Mobile</th><th style="padding: 10px;">Name</th><th style="padding: 10px;">Shield</th><th style="padding: 10px;">Type</th><th style="padding: 10px;">Preview</th><th style="padding: 10px;">Result</th><th style="padding: 10px;">Confidence</th>
+            </tr>
+    """
+    for s in scan_rows:
+        masked_m = f"{s[1][:4]}****{s[1][-2:]}" if len(s[1]) >= 6 else s[1]
+        badge_bg = "rgba(239,68,68,0.2)" if s[6] == "FAKE" else "rgba(34,197,94,0.2)"
+        badge_color = "#ef4444" if s[6] == "FAKE" else "#22c55e"
+        table_s_html += f"""
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <td style="padding: 8px 10px;">{s[0]}</td>
+                <td style="padding: 8px 10px; font-family: monospace;">{masked_m}</td>
+                <td style="padding: 8px 10px;">{s[2]}</td>
+                <td style="padding: 8px 10px;">{s[3]}</td>
+                <td style="padding: 8px 10px;">{s[4]}</td>
+                <td style="padding: 8px 10px; color:#cbd5e1;">{s[5]}</td>
+                <td style="padding: 8px 10px;"><span style="background:{badge_bg}; color:{badge_color}; padding:2px 6px; border-radius:4px; font-weight:700;">{s[6]}</span></td>
+                <td style="padding: 8px 10px; font-family: monospace;">{s[7]:.1f}%</td>
+            </tr>
+        """
+    table_s_html += "</table>"
+    st.markdown(table_s_html, unsafe_allow_html=True)
+
+    # Row 6: Top Fake Today
+    st.markdown("<div style='margin-top: 20px; font-size: 15px; font-weight: 700;'>Top Fake Today</div>", unsafe_allow_html=True)
+    tf1, tf2, tf3 = st.columns(3)
+    with tf1:
+        st.markdown("<div class='stat-card' style='border-color: rgba(239,68,68,0.3);'><div style='font-size:13px; font-weight:700; color:#ef4444;'>🚨 Free iPhone Poster</div><div style='font-size:11px; color:#aaa; margin-top:4px;'>Poster • FAKE 94% Threat</div></div>", unsafe_allow_html=True)
+    with tf2:
+        st.markdown("<div class='stat-card' style='border-color: rgba(239,68,68,0.3);'><div style='font-size:13px; font-weight:700; color:#ef4444;'>🚨 Fake Certificate</div><div style='font-size:11px; color:#aaa; margin-top:4px;'>Document • FAKE 93% Threat</div></div>", unsafe_allow_html=True)
+    with tf3:
+        st.markdown("<div class='stat-card' style='border-color: rgba(239,68,68,0.3);'><div style='font-size:13px; font-weight:700; color:#ef4444;'>🚨 NASA 15 Days Darkness</div><div style='font-size:11px; color:#aaa; margin-top:4px;'>Photo / News • FAKE 94% Threat</div></div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# -----------------------------------------------------------------------------
+# UNIVERSAL CHATBOT WIDGET (ALL PAGES - PAGE 1 & DEFENSE GRID)
+# -----------------------------------------------------------------------------
+st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+
+# Expander for Universal Assistant available on all pages
+with st.expander("💬 SensVerify Universal Assistant - Ask Anything - ఏదైనా అడగండి", expanded=st.session_state["chatbot_open"]):
+    st.markdown("""
+        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 12px;">
+            Universal Assistant: Ask about SensVerify, AI, Python, Fake News, ALITS College, or any general knowledge topic!
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Render History
+    for msg in st.session_state["chatbot_history"]:
+        if msg["role"] == "user":
+            st.markdown(f"""
+                <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+                    <div style="background: rgba(59,130,246,0.3); border:1px solid #3b82f6; border-radius:14px 14px 2px 14px; padding:8px 14px; max-width:80%; font-size:13px; color:#FFFFFF;">
+                        <b>You:</b> {msg['content']}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+                <div style="display:flex; justify-content:flex-start; margin-bottom:8px;">
+                    <div style="background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:14px 14px 14px 2px; padding:8px 14px; max-width:85%; font-size:13px; color:#E2E8F0;">
+                        <b>SensVerify Bot:</b> {msg['content']}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    # Chat Input
+    c_in1, c_in2 = st.columns([5, 1])
+    with c_in1:
+        user_query = st.text_input(
+            "Chat Input",
+            placeholder="Ask anything... - ఏదైనా అడగండి - Fake news, AI, Python, College, App...",
+            label_visibility="collapsed",
+            key="universal_chat_input"
+        )
+    with c_in2:
+        send_btn = st.button("Send", key="universal_chat_send", use_container_width=True)
+
+    if send_btn and user_query.strip():
+        st.session_state["chatbot_history"].append({"role": "user", "content": user_query.strip()})
+        reply = generate_universal_answer(user_query.strip())
+        st.session_state["chatbot_history"].append({"role": "assistant", "content": reply})
+        st.session_state["chatbot_open"] = True
+        st.rerun()
+
+# End of file

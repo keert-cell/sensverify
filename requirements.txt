@@ -1,7 +1,8 @@
 streamlit
-streamlit-autorefresh
-python-dotenv
-requests
-fpdf2
-pandas
 scikit-learn
+pandas
+numpy
+Pillow
+pytesseract
+python-dotenv
+streamlit-autorefresh
