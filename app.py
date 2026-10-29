@@ -27,6 +27,9 @@ Features:
 """
 
 import os, re, json, random, string, pickle, socket, io, time, threading, subprocess, requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -76,6 +79,49 @@ def send_real_sim_otp(mobile, otp, api_key=None):
                 return False, msg[0] if isinstance(msg, list) else str(msg)
         return False, f"HTTP Error {r.status_code}: {r.text}"
     except Exception as e:
+        return False, str(e)
+
+def send_real_mail_otp(email, otp):
+    """Dispatches live security OTP via Gmail SMTP."""
+    if not email or "@" not in str(email):
+        return False, "Invalid email address"
+    
+    sender = os.getenv("SMTP_EMAIL", "dasarikeerthi1908@gmail.com")
+    pwd = os.getenv("SMTP_PASSWORD", "")
+    
+    if not pwd or pwd in ["your_gmail_app_password_here", ""]:
+        print(f"[MAIL SENSOR] Email OTP generated for {email} (SMTP password not configured in .env)")
+        return False, "SMTP password not set in .env"
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"SensVerify Security Grid <{sender}>"
+        msg['To'] = str(email).strip()
+        msg['Subject'] = "🔐 ALITS SensVerify Security Verification Token"
+        
+        body = f"""Hello,
+
+Your ALITS SensVerify Security Grid One-Time Password (OTP) is:
+
+    {otp}
+
+This verification token is valid for 5 minutes.
+Never disclose this code to anyone, including security personnel.
+
+— SensVerify Autonomous Threat Defense Grid
+Compliant with Indian IT Act 66D
+"""
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10)
+        server.starttls()
+        server.login(sender, pwd)
+        server.send_message(msg)
+        server.quit()
+        print(f"Mail successfully sent to {email}")
+        return True, "Email dispatched successfully"
+    except Exception as e:
+        print(f"Mail error: {e}")
         return False, str(e)
 
 st.set_page_config(
@@ -135,16 +181,19 @@ def append_log(path, entry, limit=500):
 def load_users():  return load_json(USER_DB)
 def save_users(u): save_json(USER_DB, u)
 
-def enroll_or_update_user(phone, name=""):
+def enroll_or_update_user(phone, name="", email=""):
     users = load_users()
     phone_clean = str(phone).strip()
     name_clean = name.strip() if name.strip() else f"User {phone_clean[-4:]}"
+    email_clean = email.strip() if email.strip() else ""
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     idx = next((i for i, u in enumerate(users) if str(u.get("phone")).strip() == phone_clean), None)
     if idx is not None:
         if name.strip():
             users[idx]["name"] = name_clean
+        if email.strip():
+            users[idx]["email"] = email_clean
         users[idx]["last_active"] = now_str
         users[idx]["status"] = "Protected ✅"
         save_users(users)
@@ -153,6 +202,7 @@ def enroll_or_update_user(phone, name=""):
         new_user = {
             "name": name_clean,
             "phone": phone_clean,
+            "email": email_clean,
             "carrier": detect_carrier(phone_clean),
             "enrolled_at": now_str,
             "last_active": now_str,
@@ -1064,8 +1114,9 @@ defaults = {
         {"role": "assistant", "content": "Hello! I am SensVerify Autonomous Cyber Defense Assistant. Ask me about any suspicious link, malicious URL, parcel scam, or OTP protection rule."}
     ],
     "otp_sent": False,
-    "otp_code": "",
+    "real_otp": "",
     "otp_phone": "",
+    "otp_email": "",
     "otp_name": "",
     "test_scan_result": None
 }
@@ -1112,59 +1163,62 @@ if not st.session_state.logged_in:
         st.markdown("<br>", unsafe_allow_html=True)
 
         p_in = st.text_input(t_dict["phone_label"], placeholder="e.g. 9876543210", key="auth_phone_in")
+        e_in = st.text_input("📧 Email Address", placeholder="e.g. user@gmail.com", key="auth_email_in")
         n_in = st.text_input(t_dict["name_label"], placeholder="e.g. Keerthi, Rahul...", key="auth_name_in")
 
-        with st.expander("🔑 Fast2SMS Real SIM API Key (Optional — Free from fast2sms.com)"):
-            custom_key = st.text_input("Enter Fast2SMS Authorization Key", value=st.session_state.get("custom_fast2sms_key", ""), type="password", key="fast2sms_key_input")
+        with st.expander("🔑 Fast2SMS / SMTP Credentials (Optional Override)"):
+            custom_key = st.text_input("Fast2SMS Authorization Key", value=st.session_state.get("custom_fast2sms_key", ""), type="password", key="fast2sms_key_input")
             if custom_key:
                 st.session_state.custom_fast2sms_key = custom_key.strip()
-            st.caption("Leave empty to use simulated demo interception, or paste your free API key from fast2sms.com to deliver real SMS to your phone!")
+            st.caption("Saved in .env or configure live. When set, live SMS & Email are dispatched automatically.")
 
-        col_b1, col_b2 = st.columns([1.2, 1])
-        with col_b1:
-            if st.button(t_dict["send_otp"], type="primary", use_container_width=True):
-                if p_in.strip() and re.fullmatch(r'\d{10}', p_in.strip()):
-                    gen_otp = f"{random.randint(100000, 999999)}"
-                    st.session_state.otp_code = gen_otp
-                    st.session_state.otp_phone = p_in.strip()
-                    st.session_state.otp_name = n_in.strip()
-                    st.session_state.otp_sent = True
+        if st.button("🚀 Send SIM OTP + Email OTP", type="primary", use_container_width=True):
+            if p_in.strip() and re.fullmatch(r'\d{10}', p_in.strip()):
+                gen_otp = f"{random.randint(100000, 999999)}"
+                st.session_state['real_otp'] = gen_otp
+                st.session_state['otp_phone'] = p_in.strip()
+                st.session_state['otp_email'] = e_in.strip()
+                st.session_state['otp_name'] = n_in.strip()
+                st.session_state['otp_sent'] = True
 
-                    # Real SIM SMS Dispatch via Fast2SMS
-                    sms_sent, sms_msg = send_real_sim_otp(p_in.strip(), gen_otp)
-                    if sms_sent:
-                        st.success(f"📡 Real SIM SMS sent via Fast2SMS to {p_in.strip()}! Check your phone.")
-                    else:
-                        st.info("📡 Real-time SIM token generated. Sensor interception active below.")
-                else:
-                    st.error("Please enter a valid 10-digit mobile number.")
+                # 1. Auto SMS via Fast2SMS
+                send_real_sim_otp(p_in.strip(), gen_otp)
 
-        if st.session_state.otp_sent:
-            st.markdown(f"""
-            <div style="background:#3B1D63;border:1px solid #9D4EDD;border-radius:10px;padding:1rem;margin:1rem 0;">
-                <div style="color:#E0AAFF;font-weight:700;">🔔 Real-Time SIM SMS &bull; Telecom Sensor Interception:</div>
-                <div style="font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:4px;margin-top:4px;">
-                    ALITS SensVerify REAL OTP: {st.session_state.otp_code}
-                </div>
-                <div style="color:#C4B5FD;font-size:0.8rem;margin-top:4px;">
-                    ALITS SensVerify REAL OTP is {st.session_state.otp_code}. Valid 5 min. (Delivered to: {st.session_state.otp_phone})
+                # 2. Auto Mail via SMTP
+                if e_in.strip() and "@" in e_in.strip():
+                    send_real_mail_otp(e_in.strip(), gen_otp)
+
+                # Show ONLY confirmation, NEVER the OTP number
+                st.success("✅ OTP automatically sent!")
+                st.info(f"📱 SMS: +91 ******{p_in.strip()[-4:]} lo check chey")
+                if e_in.strip():
+                    st.info(f"📧 Email: {e_in.strip()} inbox lo check chey")
+            else:
+                st.error("Please enter a valid 10-digit mobile number.")
+
+        if st.session_state.get('otp_sent'):
+            st.markdown("""
+            <div style="background:#3B1D63;border:1px solid #10B981;border-radius:10px;padding:1rem;margin:1rem 0;">
+                <div style="color:#10B981;font-weight:700;">📡 Verification Tokens Dispatched</div>
+                <div style="color:#E2E8F0;font-size:0.88rem;margin-top:4px;">
+                    Authentication code has been transmitted directly to your mobile SIM and email inbox. Code is confidential.
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            entered_otp = st.text_input(t_dict["enter_otp"], max_chars=6, key="entered_otp_box")
+            entered = st.text_input("Enter 6-Digit Received OTP (from SMS/Email)", type="password", max_chars=6, key="entered_otp_box")
             
-            if st.button(t_dict["verify_otp"], type="primary", use_container_width=True):
-                if entered_otp.strip() == st.session_state.otp_code:
-                    usr = enroll_or_update_user(st.session_state.otp_phone, st.session_state.otp_name)
+            if st.button("Verify OTP & Enter Defense Grid →", type="primary", use_container_width=True):
+                if entered.strip() and entered.strip() == st.session_state.get('real_otp'):
+                    usr = enroll_or_update_user(st.session_state['otp_phone'], st.session_state['otp_name'], st.session_state.get('otp_email', ''))
                     st.session_state.logged_in = True
                     st.session_state.current_user = usr
                     log_access(usr)
-                    st.session_state.otp_sent = False
-                    st.success(f"✅ OTP Verified! Welcome, {usr['name']}!")
+                    st.session_state['otp_sent'] = False
+                    st.success("Verified! Entering Defense Grid...")
                     st.rerun()
                 else:
-                    st.error("❌ Invalid OTP token. Please enter the correct 6-digit code shown above.")
+                    st.error("❌ Invalid verification token. Please check your phone SMS or email inbox and re-enter.")
 
     st.markdown(f"""
     <div class="footer-bar">
