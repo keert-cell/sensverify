@@ -27,7 +27,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# DATABASE INITIALIZATION (analytics.db)
+# DATABASE INITIALIZATION (analytics.db) - FRESH & CLEAN SCHEMA
 # -----------------------------------------------------------------------------
 def init_db():
     conn = sqlite3.connect("analytics.db", check_same_thread=False)
@@ -65,24 +65,6 @@ def init_db():
             created_at TEXT
         )
     """)
-    
-    # Pre-seed 6 sample scans if database is brand new for viva demo safety
-    c.execute("SELECT COUNT(*) FROM scans")
-    if c.fetchone()[0] == 0:
-        today_val = str(date.today())
-        samples = [
-            ("2026-10-30 09:15:20", today_val, "SMS", "[DEMO_SAMPLE] Electricity bill unpaid tonight. Power cut at 9:30 PM...", "FAKE", 96.5, "9848012345", "Rahul"),
-            ("2026-10-30 09:40:12", today_val, "Email", "[DEMO_SAMPLE] Urgent payroll account verification required immediately...", "FAKE", 94.0, "7601234565", "Keerthi"),
-            ("2026-10-30 10:05:44", today_val, "SatyaShield", "[DEMO_SAMPLE] NASA confirms 15 days darkness on earth next month...", "FAKE", 93.8, "9440198765", "Suresh"),
-            ("2026-10-30 10:35:10", today_val, "SMS", "[DEMO_SAMPLE] Government free laptop scheme 2026 bit.ly/free-lap...", "FAKE", 97.2, "9123456780", "Anitha"),
-            ("2026-10-30 11:10:05", today_val, "SMS", "[DEMO_SAMPLE] 492019 is your confidential ALITS login OTP...", "REAL", 98.4, "9848012345", "Rahul"),
-            ("2026-10-30 11:35:18", today_val, "SatyaShield", "[DEMO_SAMPLE] The Hindu: AP Higher Education board examination schedule...", "REAL", 95.0, "7601234565", "Keerthi")
-        ]
-        c.executemany("""
-            INSERT INTO scans (timestamp, date, scan_type, content_preview, result, confidence, user_mobile, user_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, samples)
-
     conn.commit()
     conn.close()
 
@@ -93,10 +75,9 @@ def record_login(mobile, name, email, method):
     try:
         conn = sqlite3.connect("analytics.db", check_same_thread=False)
         c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         today_val = str(date.today())
         
-        # Save to users table
         c.execute("""
             INSERT INTO users (mobile, name, email, created_at)
             VALUES (?, ?, ?, ?)
@@ -105,7 +86,6 @@ def record_login(mobile, name, email, method):
                 email = excluded.email
         """, (mobile, name, email, now_time))
         
-        # Save to logins table
         c.execute("""
             INSERT INTO logins (mobile, name, email, login_method, login_time, logout_time, date)
             VALUES (?, ?, ?, ?, ?, NULL, ?)
@@ -120,7 +100,7 @@ def record_logout(mobile):
     try:
         conn = sqlite3.connect("analytics.db", check_same_thread=False)
         c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         c.execute("""
             UPDATE logins SET logout_time = ?
             WHERE mobile = ? AND logout_time IS NULL
@@ -134,7 +114,7 @@ def save_scan(scan_type, content, result, confidence, user_mobile, user_name):
     try:
         conn = sqlite3.connect("analytics.db", check_same_thread=False)
         c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         today_val = str(date.today())
         preview = (content[:60] + "...") if len(content) > 60 else content
         c.execute("""
@@ -147,7 +127,7 @@ def save_scan(scan_type, content, result, confidence, user_mobile, user_name):
         pass
 
 # -----------------------------------------------------------------------------
-# LOGO HELPER (BASE64 EMBEDDING - ZERO BROKEN IMAGE BOX)
+# LOGO HELPER (BASE64 EMBEDDED - ZERO BROKEN IMAGE BOX)
 # -----------------------------------------------------------------------------
 def get_logo():
     p = "assets/sensverify_logo.png"
@@ -160,7 +140,7 @@ def get_logo():
     return None
 
 # -----------------------------------------------------------------------------
-# SINGLE-LANGUAGE TRANSLATOR DICTIONARY (NO HYBRID/DOUBLE LABELS)
+# SINGLE-LANGUAGE TRANSLATOR DICTIONARY (NAME CHANGED TO NEWS TRUTH SHIELD)
 # -----------------------------------------------------------------------------
 TRANSLATOR = {
     "English": {
@@ -173,7 +153,9 @@ TRANSLATOR = {
         "threats_today": "Threats Blocked Today",
         "sms_shield": "SMS Scam Shield",
         "email_shield": "Email Phishing Shield",
-        "satya_shield": "SatyaShield - Truth Verifier",
+        "satya_shield": "News Truth Shield - News Verifier",
+        "scan_now": "🔍 Scan Now",
+        "my_history": "📋 My Scan History",
         "text_check": "Text Check",
         "photo_check": "Photo / Document / Poster",
         "upload_any": "Upload Any Photo / Document / Poster to Verify",
@@ -185,11 +167,9 @@ TRANSLATOR = {
         "or": "or",
         "dashboard": "Analytics Dashboard",
         "scan_history": "Scan History - Proof of Scans",
-        "my_history": "My Scan History",
         "total_scans": "Total Scans",
         "export_csv": "Export Proof as CSV",
-        "no_scans": "No scans yet - Start scanning to see proof",
-        "sample_note": "Sample scans for demonstration - Real scans will appear here",
+        "no_scans": "No scans yet - Start scanning to see your history",
         "user_history_title": "👥 User Login History - Who Logged In & How",
         "admin_title": "🛡️ SensVerify Admin Analytics - Live Dashboard - 24/7 - All User Details",
         "total_logins_today": "TOTAL LOGINS TODAY",
@@ -218,7 +198,9 @@ TRANSLATOR = {
         "check_email": "Check Email - Verify",
         "check_news": "Verify News - Truth Check",
         "enter_defense": "Enter Defense Grid",
-        "logout": "Logout"
+        "logout": "Logout",
+        "visual_forensics_title": "🔍 Visual AI Forensics - Why is it FAKE? - AI Explainability",
+        "word_impact_title": "Which words made it FAKE? (Impact Score)"
     },
     "తెలుగు": {
         "enter_mobile": "మొబైల్ నంబర్ నమోదు చేయండి",
@@ -230,7 +212,9 @@ TRANSLATOR = {
         "threats_today": "ఈ రోజు బ్లాక్ చేయబడ్డాయి",
         "sms_shield": "SMS స్కామ్ షీల్డ్",
         "email_shield": "ఇమెయిల్ ఫిషింగ్ షీల్డ్",
-        "satya_shield": "సత్యషీల్డ్ - నిజ నిర్ధారణ",
+        "satya_shield": "న్యూస్ ట్రూత్ షీల్డ్ - నిజ నిర్ధారణ",
+        "scan_now": "🔍 ఇప్పుడు స్కాన్ చేయండి",
+        "my_history": "📋 నా స్కాన్ చరిత్ర",
         "text_check": "టెక్స్ట్ చెక్",
         "photo_check": "ఫోటో / డాక్యుమెంట్ / పోస్టర్",
         "upload_any": "ఏదైనా ఫోటో / డాక్యుమెంట్ / పోస్టర్ అప్లోడ్ చేయండి",
@@ -242,11 +226,9 @@ TRANSLATOR = {
         "or": "లేదా",
         "dashboard": "విశ్లేషణ డాష్బోర్డ్",
         "scan_history": "స్కాన్ చరిత్ర - స్కాన్ల రుజువు",
-        "my_history": "నా స్కాన్ చరిత్ర",
         "total_scans": "మొత్తం స్కాన్లు",
         "export_csv": "CSV గా రుజువు ఎగుమతి చేయండి",
-        "no_scans": "ఇంకా స్కాన్లు లేవు - రుజువు చూడటానికి స్కాన్ చేయడం ప్రారంభించండి",
-        "sample_note": "ప్రదర్శన కోసం నమూనా స్కాన్లు - నిజమైన స్కాన్లు ఇక్కడ కనిపిస్తాయి",
+        "no_scans": "ఇంకా స్కాన్లు లేవు - చరిత్ర చూడటానికి స్కాన్ చేయండి",
         "user_history_title": "👥 వినియోగదారు లాగిన్ చరిత్ర - ఎవరు లాగిన్ అయ్యారు & ఎలా",
         "admin_title": "🛡️ సెన్స్వెరిఫై అడ్మిన్ అనలిటిక్స్ - లైవ్ డాష్బోర్డ్ - 24/7 - అన్ని వివరాలు",
         "total_logins_today": "ఈ రోజు మొత్తం లాగిన్లు",
@@ -275,7 +257,9 @@ TRANSLATOR = {
         "check_email": "ఇమెయిల్ తనిఖీ చేయండి",
         "check_news": "వార్త నిజ నిర్ధారణ చేయండి",
         "enter_defense": "డిఫెన్స్ గ్రిడ్‌లోకి ప్రవేశించండి",
-        "logout": "లాగ్ అవుట్"
+        "logout": "లాగ్ అవుట్",
+        "visual_forensics_title": "🔍 విజువల్ AI ఫోరెన్సిక్స్ - ఇది ఎందుకు ఫేక్? - AI వివరణ",
+        "word_impact_title": "ఏ పదాలు దీనిని ఫేక్ చేశాయి? (ప్రభావ స్కోర్)"
     },
     "हिन्दी": {
         "enter_mobile": "मोबाइल नंबर दर्ज करें",
@@ -287,7 +271,9 @@ TRANSLATOR = {
         "threats_today": "आज रोके गए खतरे",
         "sms_shield": "एसएमएस स्कैम शील्ड",
         "email_shield": "ईमेल फ़िशिंग शील्ड",
-        "satya_shield": "सत्यशील्ड - सत्य सत्यापक",
+        "satya_shield": "न्यूज ट्रुथ शील्ड - समाचार सत्यापन",
+        "scan_now": "🔍 अभी स्कैन करें",
+        "my_history": "📋 मेरा स्कैन इतिहास",
         "text_check": "टेक्स्ट जांच",
         "photo_check": "फोटो / दस्तावेज़ / पोस्टर",
         "upload_any": "सत्यापित करने के लिए कोई भी फोटो / दस्तावेज़ अपलोड करें",
@@ -299,11 +285,9 @@ TRANSLATOR = {
         "or": "या",
         "dashboard": "विश्लेषण डैशबोर्ड",
         "scan_history": "स्कैन इतिहास",
-        "my_history": "मेरा स्कैन इतिहास",
         "total_scans": "कुल स्कैन",
         "export_csv": "सीएसवी के रूप में निर्यात करें",
-        "no_scans": "अभी कोई स्कैन नहीं है",
-        "sample_note": "डेमो के लिए नमूना स्कैन",
+        "no_scans": "अभी कोई स्कैन नहीं है - इतिहास देखने के लिए स्कैन करें",
         "user_history_title": "👥 उपयोगकर्ता लॉगिन इतिहास",
         "admin_title": "🛡️ एडमिन एनालिटिक्स - लाइव डैशबोर्ड - 24/7",
         "total_logins_today": "आज कुल लॉगिन",
@@ -332,7 +316,9 @@ TRANSLATOR = {
         "check_email": "ईमेल जांचें",
         "check_news": "समाचार सत्यापित करें",
         "enter_defense": "डिफेंस ग्रिड में प्रवेश करें",
-        "logout": "लॉग आउट"
+        "logout": "लॉग आउट",
+        "visual_forensics_title": "🔍 विजुअल एआई फोरेंसिक - यह फेक क्यों है? - एआई व्याख्या",
+        "word_impact_title": "किन शब्दों ने इसे फेक बनाया? (प्रभाव स्कोर)"
     }
 }
 
@@ -342,7 +328,7 @@ def t(key):
     return lang_dict.get(key, TRANSLATOR["English"].get(key, key))
 
 # -----------------------------------------------------------------------------
-# SESSION STATE SETUP
+# SESSION STATE INITIALIZATION
 # -----------------------------------------------------------------------------
 if "lang" not in st.session_state:
     st.session_state["lang"] = "English"
@@ -397,7 +383,7 @@ st.markdown("""
         background-attachment: fixed !important;
     }
 
-    /* Glassmorphism Card (all rounded 20px, no ugly rectangles) */
+    /* Glassmorphism Card */
     .glass-card {
         background: rgba(255, 255, 255, 0.08);
         backdrop-filter: blur(20px);
@@ -536,45 +522,20 @@ st.markdown("""
         font-weight: 700;
         color: #FFFFFF;
     }
+
+    /* Visual AI Forensics Highlights */
+    .highlight-fake-word {
+        background: rgba(239, 68, 68, 0.25);
+        border: 1px solid #ef4444;
+        border-radius: 4px;
+        padding: 2px 6px;
+        color: #fca5a5;
+        font-weight: 600;
+        display: inline-block;
+        margin: 2px;
+    }
 </style>
 """, unsafe_allow_html=True)
-
-# -----------------------------------------------------------------------------
-# UNIVERSAL CHATBOT KNOWLEDGE BASE
-# -----------------------------------------------------------------------------
-GENERAL_KNOWLEDGE = {
-    "fake news": "Fake News ante - Abaddapu varthalu. Nijam kaani news ni nijam la create chesi social media lo spread cheyadam. Ee disinformation society ni mosam cheyadaniki vadatharu. SensVerify app deni nundi protect chestundi.",
-    "ai": "AI ante Artificial Intelligence - Manushula la alochinche machines create cheyadam. Machine Learning, Deep Learning tho data nundi nerchukuni predictions istundi.",
-    "machine learning": "Machine Learning ante - Data nundi nerchukune system. Historical data tho models train chesi predictions cheyadam (e.g., TF-IDF + Classifier for fake news detection).",
-    "python": "Python programming language - Easy, powerful and versatile. Data Science, Machine Learning, and Web Automation lo widely use chestaru.",
-    "alits": "ALITS ante Anantha Lakshmi Institute of Technology and Sciences - Anantapur lo unna reputed college. CSE-D Batch 6 research project ga SensVerify develop chesaru!",
-    "palmaner": "Palmaner Andhra Pradesh Chittoor district lo unna historical and famous town.",
-    "blockchain": "Blockchain ante secure, decentralized digital ledger technology. Cryptography tho data ni tamper-proof ga record chestundi.",
-    "cyber security": "Cyber Security ante computers, networks, and sensitive data ni digital threats and phishing attacks nundi protect cheyadam.",
-    "sensverify": "SensVerify is an Autonomous Cyber Threat Grid for detecting Fake News, SMS Scams, and Email Phishing across Text and Images with 24/7 Telemetry."
-}
-
-def ask_chatbot(user_q):
-    q = user_q.lower().strip()
-    if any(k in q for k in ["sensverify", "login", "sms", "email", "news", "photo", "document", "poster", "analytics", "admin", "satya", "shield"]):
-        if "login" in q or "page" in q:
-            return "SensVerify uses a 2-step frictionless login without OTP or password! Page 1 accepts mobile, Page 2 takes name/email or Google login."
-        elif "sms" in q:
-            return "SMS Scam Shield checks fake electricity cuts, courier fraud, and banking KYC traps using keyword analysis, link inspection, and OCR."
-        elif "email" in q:
-            return "Email Phishing Shield inspects sender domain spoofing, urgency traps, and malicious credential harvest links."
-        elif "satya" in q or "news" in q:
-            return "SatyaShield verifies sensational fake news in English and Telugu across articles, newspapers, and posters."
-        elif "admin" in q or "analytics" in q:
-            return "Admin Analytics provides 24/7 live tracking of user logins, active sessions, and scam blocks with full audit proof."
-        else:
-            return "SensVerify protects you through 3 layers: SMS Scam Shield, Email Phishing Shield, and SatyaShield Truth Verifier."
-
-    for topic, ans in GENERAL_KNOWLEDGE.items():
-        if topic in q:
-            return ans
-
-    return f"Nenu Universal Assistant! Meeru adigina '{user_q}' gurinchi help cheyagalanu. You can ask about AI, Python, Fake News, ALITS College, or SensVerify features."
 
 # -----------------------------------------------------------------------------
 # TOP-RIGHT TRANSLATOR (SINGLE LANGUAGE DROPDOWN)
@@ -598,16 +559,28 @@ def render_translator_pill():
             st.rerun()
 
 # -----------------------------------------------------------------------------
-# DETECTION & FORENSIC ENGINES
+# DETECTION & FORENSIC ENGINES (WITH OPTION TWO VISUAL FORENSICS)
 # -----------------------------------------------------------------------------
+SCAM_KEYWORDS_WEIGHTS = {
+    "shocking": 95, "immediately": 80, "share immediately": 90, "you won't believe": 88,
+    "100% free": 92, "lottery": 93, "urgent": 85, "click here": 87, "free iphone": 91,
+    "won": 90, "power cut": 88, "electricity": 82, "apk": 94, "disconnection": 86,
+    "kyc": 85, "bit.ly": 95, "tinyurl": 92, "account blocked": 94, "free recharge": 90,
+    "modi resign": 94, "jagan resign": 94, "nasa says earth dark": 95, "15 days": 88,
+    "రాజీనామా": 92, "ఉచిత రీఛార్జ్": 90, "వెంటనే షేర్": 88, "షాకింగ్": 94
+}
+
 def analyze_sms_scam(text):
     t_low = text.lower()
-    kws = ["account blocked", "urgent", "immediately", "click here", "lottery won", "free recharge", "bank kyc blocked", "bit.ly", "tinyurl", "sbi-fake", "upi", "otp share", "win prize", "congratulations won"]
-    matched = [k for k in kws if k in t_low]
+    matched = {}
+    for kw, wt in SCAM_KEYWORDS_WEIGHTS.items():
+        if kw in t_low:
+            matched[kw] = wt
+
     has_link = bool(re.search(r'http[s]?://(?:[a-zA-Z0-9-]+\.)*(?:bit\.ly|tinyurl|xyz|top|sbi-fake)', t_low))
     has_urgency = any(w in t_low for w in ["immediately", "tonight", "24 hours", "urgent", "disconnected"])
     
-    kw_score = min(100, len(matched) * 35)
+    kw_score = min(100, sum(matched.values()) // max(1, len(matched))) if matched else 10
     link_score = 95 if has_link else 10
     urgency_score = 85 if has_urgency else 15
     sender_score = 88 if ("bank" in t_low or "pay" in t_low) and matched else 20
@@ -617,7 +590,8 @@ def analyze_sms_scam(text):
     
     reasons = []
     if matched:
-        reasons.append(f"Scam keywords: {', '.join(matched[:3])}")
+        top_kws = list(matched.keys())[:3]
+        reasons.append(f"Scam keywords: {', '.join(top_kws)}")
     if has_link:
         reasons.append("Malicious / unverified shortlink detected")
     if has_urgency:
@@ -628,12 +602,16 @@ def analyze_sms_scam(text):
 def analyze_email_phish(sender, subject, body):
     full = f"{sender} {subject} {body}".lower()
     spoofed = ("alits" in sender.lower() and "@alits.ac.in" not in sender.lower()) or any(d in sender.lower() for d in ["@verify-bank.com", "@account-lock.cc", "@free-gift.xyz"])
-    urgency_words = ["urgent", "immediately", "verify now", "account suspended", "payroll bonus", "gift card"]
-    matched_urg = [w for w in urgency_words if w in full]
+    matched = {}
+    for kw, wt in SCAM_KEYWORDS_WEIGHTS.items():
+        if kw in full:
+            matched[kw] = wt
+    if spoofed:
+        matched["spoofed domain"] = 95
+
     has_link = "http" in full or "bit.ly" in full or "click here" in full
-    
     dom_s = 95 if spoofed else 15
-    urg_s = 80 if matched_urg else 20
+    urg_s = 85 if any(w in full for w in ["urgent", "immediately", "verify now", "suspended"]) else 15
     link_s = 88 if has_link else 15
     send_m = 90 if spoofed else 10
     
@@ -643,38 +621,40 @@ def analyze_email_phish(sender, subject, body):
     reasons = []
     if spoofed:
         reasons.append("Sender domain spoofed: Not an authentic institutional domain")
-    if matched_urg:
-        reasons.append(f"Urgency coercion flags: {', '.join(matched_urg[:2])}")
+    if matched:
+        reasons.append(f"Suspicious triggers: {', '.join(list(matched.keys())[:3])}")
     if has_link:
         reasons.append("Unverified credential harvest link inside body")
         
-    return is_fake, fake_score, dom_s, urg_s, link_s, send_m, reasons, matched_urg
+    return is_fake, fake_score, dom_s, urg_s, link_s, send_m, reasons, matched
 
 def analyze_news_truth(text):
     t_low = text.lower()
-    fake_kws = ["shocking", "you won't believe", "share immediately", "100% free", "modi resign", "earth will be dark for 15 days", "free recharge", "jagan resign", "win lottery", "click here to win", "urgent share", "nasa says earth dark", "రాజీనామా", "ఉచిత రీఛార్జ్", "వెంటనే షేర్", "షాకింగ్"]
+    matched = {}
+    for kw, wt in SCAM_KEYWORDS_WEIGHTS.items():
+        if kw in t_low:
+            matched[kw] = wt
+
     reliable = ["the hindu", "eenadu", "bbc news", "reuters", "official statement", "pib fact check"]
-    
-    matched_fakes = [k for k in fake_kws if k in t_low]
     has_rel = any(r in t_low for r in reliable)
     
-    sens_s = min(98, len(matched_fakes) * 45) if matched_fakes else 12
+    sens_s = min(98, sum(matched.values()) // max(1, len(matched))) if matched else 12
     no_src = 20 if has_rel else 85
-    fact_s = 80 if matched_fakes else 15
+    fact_s = 80 if matched else 15
     claim_s = 88 if any(w in t_low for w in ["dark", "resign", "free", "viral"]) else 15
     
     fake_score = int((sens_s * 0.35) + (no_src * 0.25) + (fact_s * 0.20) + (claim_s * 0.20))
-    if has_rel and not matched_fakes:
+    if has_rel and not matched:
         fake_score = 15
     is_fake = fake_score >= 60
     
     reasons = []
-    if matched_fakes:
-        reasons.append(f"Sensational unverified claims: {', '.join(matched_fakes[:3])}")
+    if matched:
+        reasons.append(f"Sensational unverified claims: {', '.join(list(matched.keys())[:3])}")
     if not has_rel:
         reasons.append("No verified journalistic source identified")
         
-    return is_fake, fake_score, sens_s, no_src, fact_s, claim_s, reasons, matched_fakes
+    return is_fake, fake_score, sens_s, no_src, fact_s, claim_s, reasons, matched
 
 def do_ocr(uploaded_file):
     try:
@@ -849,13 +829,14 @@ elif st.session_state["logged_in"]:
                     st.session_state["is_admin"] = True
                     st.rerun()
                 else:
-                    pin = st.text_input("Enter Admin PIN", type="password")
+                    pin = st.text_input("Enter Admin PIN", placeholder="Hint: 1234", type="password")
+                    st.caption("Default PIN: 1234 - For Admin Access")
                     if st.button("Verify PIN"):
-                        if pin in ["1234", "ALITS2024"]:
+                        if pin == "1234":
                             st.session_state["is_admin"] = True
                             st.rerun()
                         else:
-                            st.error("Invalid Admin PIN")
+                            st.error("Wrong PIN - Try 1234")
         else:
             st.session_state["is_admin"] = False
 
@@ -927,7 +908,7 @@ elif st.session_state["logged_in"]:
     sc1, sc2, sc3 = st.columns(3)
     with sc1:
         st.markdown(f"""
-            <div class="stat-card-widget" title="3 Shields: SMS Scam Shield, Email Phishing Shield, SatyaShield Truth Verifier - Our 3 protection layers - Real">
+            <div class="stat-card-widget" title="3 Shields: SMS Scam Shield, Email Phishing Shield, News Truth Shield - Our 3 protection layers - Real">
                 <div class="stat-card-val">3</div>
                 <div class="stat-card-lbl">{t("protected_endpoints")}</div>
                 <div class="stat-card-sub">● Live Build Active</div>
@@ -953,225 +934,326 @@ elif st.session_state["logged_in"]:
     st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
     # =========================================================================
-    # PART F: USER VIEW (NORMAL USER - PRIVATE - ONLY OWN HISTORY)
+    # PART 3: USER VIEW (SEPARATE TABS: SCAN NOW vs MY SCAN HISTORY)
     # =========================================================================
     if not st.session_state.get("is_admin", False):
-        st.markdown(f"<div style='font-size:12px; color:#22C55E; margin-bottom:10px;'>🔒 {t('privacy_note')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:12px; color:#22C55E; margin-bottom:12px;'>🔒 {t('privacy_note')}</div>", unsafe_allow_html=True)
 
-        tab_sms, tab_email, tab_satya = st.tabs([
-            t("sms_shield"),
-            t("email_shield"),
-            t("satya_shield")
+        user_tab_scan, user_tab_history = st.tabs([
+            t("scan_now"),
+            t("my_history")
         ])
 
         # ---------------------------------------------------------------------
-        # SHIELD 1: SMS SCAM SHIELD
+        # USER TAB 1: 🔍 SCAN NOW (NO HISTORY TABLE HERE - CLEAN SCANNING AREA)
         # ---------------------------------------------------------------------
-        with tab_sms:
-            sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-            with sub1:
-                sms_txt = st.text_area("SMS Input", placeholder="Paste SMS here... e.g. Your electricity power disconnected tonight. Call 9823102345 or download apk bit.ly/power-pay", height=110, label_visibility="collapsed")
-                if st.button(t("check_sms"), key="btn_chk_sms", type="primary"):
-                    if sms_txt.strip():
-                        is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched_kws = analyze_sms_scam(sms_txt)
-                        save_scan("SMS", sms_txt, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        
-                        th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
-                        th_bd = "#ef4444" if is_fake else "#22c55e"
-                        th_tit = f"🔴 FAKE SMS / SCAM - {sc}% Threat" if is_fake else f"🟢 REAL SMS - {100-sc}% Safe"
-                        
-                        st.markdown(f"""
-                            <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
-                                <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
-                                <div style="margin-top:12px;">
-                                    <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
-                                    <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
-                                        <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+        with user_tab_scan:
+            tab_sms, tab_email, tab_satya = st.tabs([
+                t("sms_shield"),
+                t("email_shield"),
+                t("satya_shield")
+            ])
+
+            # -----------------------------------------------------------------
+            # SHIELD 1: SMS SCAM SHIELD
+            # -----------------------------------------------------------------
+            with tab_sms:
+                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
+                with sub1:
+                    sms_txt = st.text_area("SMS Input", placeholder="Paste SMS here... e.g. Your electricity power disconnected tonight. Call 9823102345 or download apk bit.ly/power-pay", height=110, label_visibility="collapsed")
+                    if st.button(t("check_sms"), key="btn_chk_sms", type="primary"):
+                        if sms_txt.strip():
+                            is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched = analyze_sms_scam(sms_txt)
+                            save_scan("SMS", sms_txt, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            
+                            th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                            th_bd = "#ef4444" if is_fake else "#22c55e"
+                            th_tit = f"🔴 FAKE SMS / SCAM - {sc}% Threat" if is_fake else f"🟢 REAL SMS - {100-sc}% Safe"
+                            
+                            st.markdown(f"""
+                                <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
+                                    <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
+                                    <div style="margin-top:12px;">
+                                        <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
+                                        <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
+                                            <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top:18px;">
+                                        <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
+                                        <div class="bg-row"><span class="bg-lbl">Scam Keywords</span><div class="bg-track"><div class="bg-fill" style="width:{kw_s}%; background:#ef4444;"></div></div><span class="bg-pct">{kw_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Fake Link</span><div class="bg-track"><div class="bg-fill" style="width:{lnk_s}%; background:#ef4444;"></div></div><span class="bg-pct">{lnk_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Urgency Trick</span><div class="bg-track"><div class="bg-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bg-pct">{urg_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Sender Mismatch</span><div class="bg-track"><div class="bg-fill" style="width:{snd_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{snd_s}%</span></div>
                                     </div>
                                 </div>
-                                <div style="margin-top:18px;">
-                                    <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
-                                    <div class="bg-row"><span class="bg-lbl">Scam Keywords</span><div class="bg-track"><div class="bg-fill" style="width:{kw_s}%; background:#ef4444;"></div></div><span class="bg-pct">{kw_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Fake Link</span><div class="bg-track"><div class="bg-fill" style="width:{lnk_s}%; background:#ef4444;"></div></div><span class="bg-pct">{lnk_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Urgency Trick</span><div class="bg-track"><div class="bg-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bg-pct">{urg_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Sender Mismatch</span><div class="bg-track"><div class="bg-fill" style="width:{snd_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{snd_s}%</span></div>
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
+                            
+                            # Visual AI Forensics - Option Two (Laptop & Mobile)
+                            if is_fake:
+                                st.markdown(f"""
+                                    <div style="margin-top:20px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:16px; padding:18px;">
+                                        <div style="font-size:15px; font-weight:800; color:#FCA5A5;">{t('visual_forensics_title')}</div>
+                                        <div style="font-size:12px; color:#CBD5E1; margin-top:6px;"><b>Step A: Suspicious Words Highlighted</b></div>
+                                """, unsafe_allow_html=True)
+                                
+                                highlighted_txt = sms_txt
+                                for kw, wt in matched.items():
+                                    pattern = re.compile(re.escape(kw), re.IGNORECASE)
+                                    highlighted_txt = pattern.sub(f"<span class='highlight-fake-word'>{kw} (Impact: {wt}%)</span>", highlighted_txt)
+                                
+                                st.markdown(f"<div style='margin-top:8px; font-size:13px; line-height:1.6;'>{highlighted_txt}</div>", unsafe_allow_html=True)
+                                
+                                st.markdown(f"<div style='font-size:12px; color:#CBD5E1; margin-top:14px;'><b>Step B: {t('word_impact_title')}</b></div>", unsafe_allow_html=True)
+                                for kw, wt in matched.items():
+                                    st.markdown(f"""
+                                        <div class="bg-row">
+                                            <span class="bg-lbl" style="width:160px; color:#F87171;">⚠️ {kw}</span>
+                                            <div class="bg-track"><div class="bg-fill" style="width:{wt}%; background:#ef4444;"></div></div>
+                                            <span class="bg-pct">{wt}%</span>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown("</div>", unsafe_allow_html=True)
+
+                with sub2:
+                    st.markdown(f"""
+                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
+                            <div style="font-size:28px;">📸</div>
+                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - SMS</div>
+                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    media_col1, media_col2 = st.columns(2)
+                    with media_col1:
+                        up_s = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_sms_user", label_visibility="collapsed")
+                    with media_col2:
+                        cam_s = st.camera_input("Or Capture with Camera", key="cam_sms_user")
                         
-                        # Visual AI Forensics (Red Highlights)
-                        if is_fake and matched_kws:
-                            highl = sms_txt
-                            for kw in matched_kws:
-                                highl = re.sub(re.escape(kw), f"<span style='background:rgba(239,68,68,0.25); border:1px solid #ef4444; border-radius:4px; padding:2px 6px; color:#fca5a5; font-weight:600;'>{kw}</span>", highl, flags=re.IGNORECASE)
-                            st.markdown(f"<div style='margin-top:14px; font-size:13px; color:#CBD5E1;'><b>Visual AI Forensics:</b><br>{highl}</div>", unsafe_allow_html=True)
+                    active_media = up_s if up_s is not None else cam_s
+                    if active_media:
+                        c_i1, c_i2 = st.columns([1, 2])
+                        with c_i1:
+                            st.image(active_media, caption="Media Preview", use_container_width=True)
+                        with c_i2:
+                            txt_ext = do_ocr(active_media)
+                            is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched = analyze_sms_scam(txt_ext)
+                            in_tp = "Document" if "doc" in getattr(active_media, "name", "").lower() else ("Poster" if "poster" in getattr(active_media, "name", "").lower() else "Photo")
+                            save_scan(f"SMS ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            
+                            st.markdown(f"""
+                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
+                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE SMS DETECTED' if is_fake else '🟢 REAL SMS'} - {sc}% Confidence</div>
+                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Visual AI Forensics for Photo (Bounding Box Overlay)
+                            if is_fake:
+                                st.markdown("""
+                                    <div style="margin-top:10px; padding:10px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; font-size:12px; color:#FCA5A5;">
+                                        🚨 <b>Forensic Region Detected:</b> [SUSPICIOUS CALL-TO-ACTION & LINK DETECTED]
+                                    </div>
+                                """, unsafe_allow_html=True)
 
-            with sub2:
-                st.markdown(f"""
-                    <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                        <div style="font-size:28px;">📸</div>
-                        <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - SMS</div>
-                        <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                up_s = st.file_uploader("Upload SMS File", type=["jpg", "jpeg", "png", "pdf"], key="up_sms_user", label_visibility="collapsed")
-                if up_s:
-                    c_i1, c_i2 = st.columns([1, 2])
-                    with c_i1:
-                        st.image(up_s, caption="Media Preview", use_container_width=True)
-                    with c_i2:
-                        txt_ext = do_ocr(up_s)
-                        is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched_kws = analyze_sms_scam(txt_ext)
-                        in_tp = "Document" if "doc" in up_s.name.lower() else ("Poster" if "poster" in up_s.name.lower() else "Photo")
-                        save_scan(f"SMS ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        st.markdown(f"""
-                            <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:12px;">
-                                <div style="font-size:15px; font-weight:700;">{'🔴 FAKE SMS DETECTED' if is_fake else '🟢 REAL SMS'} - {sc}% Confidence</div>
-                                <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                            </div>
-                        """, unsafe_allow_html=True)
-
-        # ---------------------------------------------------------------------
-        # SHIELD 2: EMAIL PHISHING SHIELD
-        # ---------------------------------------------------------------------
-        with tab_email:
-            sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-            with sub1:
-                e_from = st.text_input("From", placeholder="From Email ID - e.g. support@alits.ac.in")
-                e_sub = st.text_input("Sub", placeholder="Subject Header")
-                e_body = st.text_area("Body", placeholder="Email Body", height=110)
-                if st.button(t("check_email"), key="btn_chk_em", type="primary"):
-                    if e_body.strip() or e_from.strip():
-                        is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched_urg = analyze_email_phish(e_from, e_sub, e_body)
-                        save_scan("Email", f"{e_from} {e_sub} {e_body}", "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
-                        th_bd = "#ef4444" if is_fake else "#22c55e"
-                        th_tit = f"🔴 FAKE / PHISHING EMAIL - {sc}% Threat" if is_fake else f"🟢 AUTHENTIC EMAIL - {100-sc}% Safe"
-                        st.markdown(f"""
-                            <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
-                                <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
-                                <div style="margin-top:12px;">
-                                    <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
-                                    <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
-                                        <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+            # -----------------------------------------------------------------
+            # SHIELD 2: EMAIL PHISHING SHIELD
+            # -----------------------------------------------------------------
+            with tab_email:
+                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
+                with sub1:
+                    e_from = st.text_input("From", placeholder="From Email ID - e.g. support@alits.ac.in")
+                    e_sub = st.text_input("Sub", placeholder="Subject Header")
+                    e_body = st.text_area("Body", placeholder="Email Body", height=110)
+                    if st.button(t("check_email"), key="btn_chk_em", type="primary"):
+                        if e_body.strip() or e_from.strip():
+                            is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched = analyze_email_phish(e_from, e_sub, e_body)
+                            save_scan("Email", f"{e_from} {e_sub} {e_body}", "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                            th_bd = "#ef4444" if is_fake else "#22c55e"
+                            th_tit = f"🔴 FAKE / PHISHING EMAIL - {sc}% Threat" if is_fake else f"🟢 AUTHENTIC EMAIL - {100-sc}% Safe"
+                            st.markdown(f"""
+                                <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
+                                    <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
+                                    <div style="margin-top:12px;">
+                                        <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
+                                        <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
+                                            <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top:18px;">
+                                        <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
+                                        <div class="bg-row"><span class="bg-lbl">Fake Domain</span><div class="bg-track"><div class="bg-fill" style="width:{dom_s}%; background:#ef4444;"></div></div><span class="bg-pct">{dom_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Urgency Factor</span><div class="bg-track"><div class="bg-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bg-pct">{urg_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Suspicious Link</span><div class="bg-track"><div class="bg-fill" style="width:{lnk_s}%; background:#ef4444;"></div></div><span class="bg-pct">{lnk_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Sender Mismatch</span><div class="bg-track"><div class="bg-fill" style="width:{send_m}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{send_m}%</span></div>
                                     </div>
                                 </div>
-                                <div style="margin-top:18px;">
-                                    <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
-                                    <div class="bg-row"><span class="bg-lbl">Fake Domain</span><div class="bg-track"><div class="bg-fill" style="width:{dom_s}%; background:#ef4444;"></div></div><span class="bg-pct">{dom_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Urgency Factor</span><div class="bg-track"><div class="bg-fill" style="width:{urg_s}%; background:#f97316;"></div></div><span class="bg-pct">{urg_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Suspicious Link</span><div class="bg-track"><div class="bg-fill" style="width:{lnk_s}%; background:#ef4444;"></div></div><span class="bg-pct">{lnk_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Sender Mismatch</span><div class="bg-track"><div class="bg-fill" style="width:{send_m}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{send_m}%</span></div>
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
-            with sub2:
-                st.markdown(f"""
-                    <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                        <div style="font-size:28px;">📸</div>
-                        <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - Email</div>
-                        <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                up_e = st.file_uploader("Upload Email File", type=["jpg", "jpeg", "png", "pdf"], key="up_em_user", label_visibility="collapsed")
-                if up_e:
-                    c_i1, c_i2 = st.columns([1, 2])
-                    with c_i1:
-                        st.image(up_e, caption="Media Preview", use_container_width=True)
-                    with c_i2:
-                        txt_ext = do_ocr(up_e)
-                        is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched_urg = analyze_email_phish("spoof@fake-mail.cc", "Detected Notice", txt_ext)
-                        in_tp = "Document" if "doc" in up_e.name.lower() else ("Poster" if "poster" in up_e.name.lower() else "Photo")
-                        save_scan(f"Email ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        st.markdown(f"""
-                            <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:12px;">
-                                <div style="font-size:15px; font-weight:700;">{'🔴 FAKE EMAIL DETECTED' if is_fake else '🟢 AUTHENTIC EMAIL'} - {sc}% Confidence</div>
-                                <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
+                            
+                            # Visual AI Forensics
+                            if is_fake:
+                                st.markdown(f"""
+                                    <div style="margin-top:20px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:16px; padding:18px;">
+                                        <div style="font-size:15px; font-weight:800; color:#FCA5A5;">{t('visual_forensics_title')}</div>
+                                        <div style="font-size:12px; color:#CBD5E1; margin-top:6px;"><b>Step B: {t('word_impact_title')}</b></div>
+                                """, unsafe_allow_html=True)
+                                for kw, wt in matched.items():
+                                    st.markdown(f"""
+                                        <div class="bg-row">
+                                            <span class="bg-lbl" style="width:160px; color:#F87171;">⚠️ {kw}</span>
+                                            <div class="bg-track"><div class="bg-fill" style="width:{wt}%; background:#ef4444;"></div></div>
+                                            <span class="bg-pct">{wt}%</span>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown("</div>", unsafe_allow_html=True)
 
-        # ---------------------------------------------------------------------
-        # SHIELD 3: SATYASHIELD - TRUTH VERIFIER
-        # ---------------------------------------------------------------------
-        with tab_satya:
-            sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-            with sub1:
-                news_txt = st.text_area("News Input", placeholder="Paste News Headline / Article here... (English / Telugu)", height=120, label_visibility="collapsed")
-                if st.button(t("check_news"), key="btn_chk_nw", type="primary"):
-                    if news_txt.strip():
-                        is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched_fakes = analyze_news_truth(news_txt)
-                        save_scan("SatyaShield", news_txt, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
-                        th_bd = "#ef4444" if is_fake else "#22c55e"
-                        th_tit = f"🔴 FAKE NEWS / MISINFORMATION - {sc}% Fake" if is_fake else f"🟢 VERIFIED AUTHENTIC NEWS - {100-sc}% True"
-                        st.markdown(f"""
-                            <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
-                                <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
-                                <div style="margin-top:12px;">
-                                    <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
-                                    <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
-                                        <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+                with sub2:
+                    st.markdown(f"""
+                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
+                            <div style="font-size:28px;">📸</div>
+                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - Email</div>
+                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    em_c1, em_c2 = st.columns(2)
+                    with em_c1:
+                        up_e = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_em_user", label_visibility="collapsed")
+                    with em_c2:
+                        cam_e = st.camera_input("Or Capture with Camera", key="cam_em_user")
+                        
+                    active_e = up_e if up_e is not None else cam_e
+                    if active_e:
+                        c_i1, c_i2 = st.columns([1, 2])
+                        with c_i1:
+                            st.image(active_e, caption="Media Preview", use_container_width=True)
+                        with c_i2:
+                            txt_ext = do_ocr(active_e)
+                            is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched = analyze_email_phish("spoof@fake-mail.cc", "Detected Notice", txt_ext)
+                            in_tp = "Document" if "doc" in getattr(active_e, "name", "").lower() else ("Poster" if "poster" in getattr(active_e, "name", "").lower() else "Photo")
+                            save_scan(f"Email ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.markdown(f"""
+                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
+                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE EMAIL DETECTED' if is_fake else '🟢 AUTHENTIC EMAIL'} - {sc}% Confidence</div>
+                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+            # -----------------------------------------------------------------
+            # SHIELD 3: NEWS TRUTH SHIELD (RENAMED FROM SATYASHIELD)
+            # -----------------------------------------------------------------
+            with tab_satya:
+                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
+                with sub1:
+                    news_txt = st.text_area("News Input", placeholder="Paste News Headline / Article here... (English / Telugu)", height=120, label_visibility="collapsed")
+                    if st.button(t("check_news"), key="btn_chk_nw", type="primary"):
+                        if news_txt.strip():
+                            is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched = analyze_news_truth(news_txt)
+                            save_scan("News Truth Shield", news_txt, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            th_bg = "rgba(239,68,68,0.12)" if is_fake else "rgba(34,197,94,0.12)"
+                            th_bd = "#ef4444" if is_fake else "#22c55e"
+                            th_tit = f"🔴 FAKE NEWS / MISINFORMATION - {sc}% Fake" if is_fake else f"🟢 VERIFIED AUTHENTIC NEWS - {100-sc}% True"
+                            st.markdown(f"""
+                                <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
+                                    <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
+                                    <div style="margin-top:12px;">
+                                        <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">{sc}% Confidence</div>
+                                        <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
+                                            <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top:18px;">
+                                        <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
+                                        <div class="bg-row"><span class="bg-lbl">Sensational Words</span><div class="bg-track"><div class="bg-fill" style="width:{sens_s}%; background:#ef4444;"></div></div><span class="bg-pct">{sens_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">No Source Trace</span><div class="bg-track"><div class="bg-fill" style="width:{nos_s}%; background:#ef4444;"></div></div><span class="bg-pct">{nos_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Fact Discrepancy</span><div class="bg-track"><div class="bg-fill" style="width:{fact_s}%; background:#f97316;"></div></div><span class="bg-pct">{fact_s}%</span></div>
+                                        <div class="bg-row"><span class="bg-lbl">Claim Pattern</span><div class="bg-track"><div class="bg-fill" style="width:{claim_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{claim_s}%</span></div>
                                     </div>
                                 </div>
-                                <div style="margin-top:18px;">
-                                    <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
-                                    <div class="bg-row"><span class="bg-lbl">Sensational Words</span><div class="bg-track"><div class="bg-fill" style="width:{sens_s}%; background:#ef4444;"></div></div><span class="bg-pct">{sens_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">No Source Trace</span><div class="bg-track"><div class="bg-fill" style="width:{nos_s}%; background:#ef4444;"></div></div><span class="bg-pct">{nos_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Fact Discrepancy</span><div class="bg-track"><div class="bg-fill" style="width:{fact_s}%; background:#f97316;"></div></div><span class="bg-pct">{fact_s}%</span></div>
-                                    <div class="bg-row"><span class="bg-lbl">Claim Pattern</span><div class="bg-track"><div class="bg-fill" style="width:{claim_s}%; background:{'#ef4444' if is_fake else '#22c55e'};"></div></div><span class="bg-pct">{claim_s}%</span></div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Visual AI Forensics
+                            if is_fake:
+                                st.markdown(f"""
+                                    <div style="margin-top:20px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:16px; padding:18px;">
+                                        <div style="font-size:15px; font-weight:800; color:#FCA5A5;">{t('visual_forensics_title')}</div>
+                                        <div style="font-size:12px; color:#CBD5E1; margin-top:6px;"><b>Step A: Suspicious Claim Words Highlighted</b></div>
+                                """, unsafe_allow_html=True)
+                                
+                                highl = news_txt
+                                for kw, wt in matched.items():
+                                    pattern = re.compile(re.escape(kw), re.IGNORECASE)
+                                    highl = pattern.sub(f"<span class='highlight-fake-word'>{kw} (Impact: {wt}%)</span>", highl)
+                                
+                                st.markdown(f"<div style='margin-top:8px; font-size:13px; line-height:1.6;'>{highl}</div>", unsafe_allow_html=True)
+                                
+                                st.markdown(f"<div style='font-size:12px; color:#CBD5E1; margin-top:14px;'><b>Step B: {t('word_impact_title')}</b></div>", unsafe_allow_html=True)
+                                for kw, wt in matched.items():
+                                    st.markdown(f"""
+                                        <div class="bg-row">
+                                            <span class="bg-lbl" style="width:160px; color:#F87171;">⚠️ {kw}</span>
+                                            <div class="bg-track"><div class="bg-fill" style="width:{wt}%; background:#ef4444;"></div></div>
+                                            <span class="bg-pct">{wt}%</span>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown("</div>", unsafe_allow_html=True)
+
+                with sub2:
+                    st.markdown(f"""
+                        <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
+                            <div style="font-size:28px;">📸</div>
+                            <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - News</div>
+                            <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    nw_c1, nw_c2 = st.columns(2)
+                    with nw_c1:
+                        up_n = st.file_uploader("Upload File", type=["jpg", "jpeg", "png", "pdf"], key="up_nw_user", label_visibility="collapsed")
+                    with nw_c2:
+                        cam_n = st.camera_input("Or Capture with Camera", key="cam_nw_user")
+                        
+                    active_n = up_n if up_n is not None else cam_n
+                    if active_n:
+                        c_i1, c_i2 = st.columns([1, 2])
+                        with c_i1:
+                            st.image(active_n, caption="Media Preview", use_container_width=True)
+                        with c_i2:
+                            txt_ext = do_ocr(active_n)
+                            is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched = analyze_news_truth(txt_ext)
+                            in_tp = "Document" if "doc" in getattr(active_n, "name", "").lower() else ("Poster" if "poster" in getattr(active_n, "name", "").lower() else "Photo")
+                            save_scan(f"News Truth Shield ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.markdown(f"""
+                                <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:14px;">
+                                    <div style="font-size:16px; font-weight:700;">{'🔴 FAKE NEWS DETECTED' if is_fake else '🟢 AUTHENTIC NEWS'} - {sc}% Confidence</div>
+                                    <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
                                 </div>
-                            </div>
-                        """, unsafe_allow_html=True)
-            with sub2:
-                st.markdown(f"""
-                    <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:24px; text-align:center; margin-bottom:14px;">
-                        <div style="font-size:28px;">📸</div>
-                        <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - News</div>
-                        <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                up_n = st.file_uploader("Upload News File", type=["jpg", "jpeg", "png", "pdf"], key="up_nw_user", label_visibility="collapsed")
-                if up_n:
-                    c_i1, c_i2 = st.columns([1, 2])
-                    with c_i1:
-                        st.image(up_n, caption="Media Preview", use_container_width=True)
-                    with c_i2:
-                        txt_ext = do_ocr(up_n)
-                        is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched_fakes = analyze_news_truth(txt_ext)
-                        in_tp = "Document" if "doc" in up_n.name.lower() else ("Poster" if "poster" in up_n.name.lower() else "Photo")
-                        save_scan(f"SatyaShield ({in_tp})", txt_ext, "FAKE" if is_fake else "REAL", sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                        st.markdown(f"""
-                            <div style="background:{'rgba(239,68,68,0.12)' if is_fake else 'rgba(34,197,94,0.12)'}; border-left:4px solid {'#ef4444' if is_fake else '#22c55e'}; border-radius:12px; padding:12px;">
-                                <div style="font-size:15px; font-weight:700;">{'🔴 FAKE NEWS DETECTED' if is_fake else '🟢 AUTHENTIC / FACT-VERIFIED'} - {sc}% Confidence</div>
-                                <div style="font-size:11px; color:#CBD5E1; margin-top:4px;">Extracted: <i>{txt_ext[:80]}...</i></div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
 
         # ---------------------------------------------------------------------
-        # MY SCAN HISTORY (USER VIEW - ONLY OWN SCANS - PRIVACY RESPECTED)
+        # USER TAB 2: 📋 MY SCAN HISTORY (SEPARATE TAB - CLEAN & PRIVATE)
         # ---------------------------------------------------------------------
-        st.markdown("<div style='height: 35px;'></div>", unsafe_allow_html=True)
-        st.markdown(f"#### 📜 {t('my_history')}")
-        
-        conn_u = sqlite3.connect("analytics.db", check_same_thread=False)
-        my_m = st.session_state.get("user_mobile", "")
-        df_my = pd.read_sql_query("""
-            SELECT timestamp as 'Timestamp', scan_type as 'Type', content_preview as 'Preview', result as 'Result', confidence as 'Confidence (%)'
-            FROM scans
-            WHERE user_mobile = ?
-            ORDER BY id DESC
-        """, conn_u, params=(my_m,))
-        conn_u.close()
+        with user_tab_history:
+            st.markdown(f"#### 📜 {t('my_history')}")
+            conn_u = sqlite3.connect("analytics.db", check_same_thread=False)
+            my_m = st.session_state.get("user_mobile", "")
+            df_my = pd.read_sql_query("""
+                SELECT timestamp as 'Time', scan_type as 'Scan Type', content_preview as 'Content Preview', result as 'Result', confidence as 'Confidence (%)'
+                FROM scans
+                WHERE user_mobile = ?
+                ORDER BY id DESC
+                LIMIT 20
+            """, conn_u, params=(my_m,))
+            conn_u.close()
 
-        if len(df_my) > 0:
-            st.dataframe(df_my, use_container_width=True)
-            csv_data = df_my.to_csv(index=False).encode('utf-8')
-            st.download_button(t("export_csv"), data=csv_data, file_name=f"My_SensVerify_Scans_{my_m}.csv", mime="text/csv")
-        else:
-            st.info(t("no_scans"))
+            if len(df_my) > 0:
+                st.dataframe(df_my, use_container_width=True)
+                csv_data = df_my.to_csv(index=False).encode('utf-8')
+                st.download_button(t("export_csv"), data=csv_data, file_name=f"My_SensVerify_Scans_{my_m}.csv", mime="text/csv")
+            else:
+                st.info(t("no_scans"))
 
     # =========================================================================
-    # PART F: ADMIN VIEW (PROFESSOR / ADMIN ONLY - ALL DETAILS)
+    # PART 4: ADMIN VIEW (PROFESSOR / ADMIN ONLY - ALL DETAILS)
     # =========================================================================
     else:
         st.markdown(f"""
@@ -1257,8 +1339,8 @@ elif st.session_state["logged_in"]:
         st.markdown(f"#### 🔍 {t('scan_history')}")
         conn_all = sqlite3.connect("analytics.db", check_same_thread=False)
         df_all_scans = pd.read_sql_query("""
-            SELECT timestamp as 'Timestamp', user_mobile as 'User Mobile', user_name as 'User Name',
-                   scan_type as 'Scan Type', content_preview as 'Preview', result as 'Result', confidence as 'Confidence (%)'
+            SELECT timestamp as 'Time', user_mobile as 'User Mobile', user_name as 'User Name',
+                   scan_type as 'Scan Type', content_preview as 'Content Preview', result as 'Result', confidence as 'Confidence (%)'
             FROM scans
             ORDER BY id DESC
         """, conn_all)
@@ -1277,7 +1359,6 @@ elif st.session_state["logged_in"]:
 # -----------------------------------------------------------------------------
 st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
 
-# Expander with single language label
 with st.expander(f"💬 {t('ask_assistant')}", expanded=st.session_state["chatbot_open"]):
     for msg in st.session_state["chatbot_history"]:
         if msg["role"] == "user":
@@ -1304,8 +1385,20 @@ with st.expander(f"💬 {t('ask_assistant')}", expanded=st.session_state["chatbo
         if st.button("Send", key="chat_send_btn", use_container_width=True):
             if q_in.strip():
                 st.session_state["chatbot_history"].append({"role": "user", "content": q_in.strip()})
-                rep = ask_chatbot(q_in.strip())
-                st.session_state["chatbot_history"].append({"role": "assistant", "content": rep})
+                # Check for answer
+                q_low = q_in.lower().strip()
+                ans = None
+                for top, answ in GENERAL_KNOWLEDGE.items():
+                    if top in q_low:
+                        ans = answ
+                        break
+                if not ans:
+                    if any(k in q_low for k in ["sensverify", "login", "sms", "email", "news", "admin", "shield"]):
+                        ans = "SensVerify uses 3 Shields: SMS Scam Shield, Email Phishing Shield, and News Truth Shield to protect users with 24/7 Live Telemetry."
+                    else:
+                        ans = f"Nenu Universal Assistant! Meeru adigina '{q_in}' gurinchi: Idi oka key technical / general knowledge topic. Inka specific ga adagandi, nenu answer istha!"
+                
+                st.session_state["chatbot_history"].append({"role": "assistant", "content": ans})
                 st.session_state["chatbot_open"] = True
                 st.rerun()
 
