@@ -639,87 +639,115 @@ def render_translator_pill(key_suffix=""):
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# REUSABLE SINGLE CAMERA BOX (360PX BLACK VIEWPORT, WHITE CIRCLE, FLIP ICON)
+# REUSABLE SINGLE CAMERA BOX (CENTERED WHITE CIRCLE, FLIP ICON, UPLOAD/CAMERA TABS)
 # -----------------------------------------------------------------------------
 def single_camera_box(shield_name):
-    """
-    Single camera box - 360px black box - White circle center - Small flip icon bottom-right - No second Take Photo bar - Works for SMS, Email, News, Universal
-    shield_name: "sms", "email", "news", "universal", "document"
-    """
     st.markdown("""
     <style>
-    /* Single camera box - 360px black box - Center */
+    /* Center the whole camera box */
     div[data-testid="stCameraInput"] {
-        width: 360px !important;
-        height: 360px !important;
+        width: 100% !important;
+        max-width: 400px !important;
         margin: 0 auto !important;
-        background: #000000 !important;
-        border-radius: 20px !important;
+        display: block !important;
         border: 2px solid #00D4FF !important;
-        overflow: hidden !important;
-        position: relative !important;
-    }
-    div[data-testid="stCameraInput"] video {
-        width: 360px !important;
-        height: 360px !important;
-        object-fit: cover !important;
+        border-radius: 20px !important;
         background: #000000 !important;
+        position: relative !important;
+        text-align: center !important;
     }
-    div[data-testid="stCameraInput"] img {
-        width: 360px !important;
-        height: 360px !important;
-        object-fit: cover !important;
-    }
-    /* White circle button - Center */
-    div[data-testid="stCameraInput"] button:first-of-type {
+    /* White circle capture button - Center */
+    div[data-testid="stCameraInput"] button {
         background: white !important;
-        width: 60px !important;
-        height: 60px !important;
+        width: 65px !important;
+        height: 65px !important;
         border-radius: 50% !important;
-        border: 4px solid rgba(255,255,255,0.8) !important;
-        position: absolute !important;
-        bottom: 20px !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
-        z-index: 10 !important;
-        box-shadow: 0 0 20px rgba(255,255,255,0.5) !important;
+        border: 4px solid #FFFFFF !important;
+        margin: 10px auto !important;
+        display: block !important;
+        position: relative !important;
+        left: 0 !important;
+        right: 0 !important;
+        transform: none !important;
+        box-shadow: 0 0 15px rgba(255,255,255,0.6) !important;
     }
-    /* Hide second Take Photo bar - Only one circle */
-    div[data-testid="stCameraInput"] button:nth-of-type(2) {
+    div[data-testid="stCameraInput"] button p {
         display: none !important;
     }
-    div[data-testid="stCameraInput"] div:last-child button {
+    /* Hide extra buttons - Only one capture button center */
+    div[data-testid="stCameraInput"] > div > div > button:nth-child(2) {
         display: none !important;
     }
-    /* Small flip icon bottom-right - 🔄 */
+    /* Small flip icon bottom-right */
     div[data-testid="stCameraInput"]::after {
         content: "🔄";
         position: absolute;
-        bottom: 15px;
-        right: 15px;
-        font-size: 20px;
-        background: rgba(0,0,0,0.6);
-        width: 35px;
-        height: 35px;
+        bottom: 10px;
+        right: 10px;
+        font-size: 18px;
+        background: rgba(0,0,0,0.7);
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 11;
-        pointer-events: none;
-    }
-    /* Hide default Streamlit camera controls */
-    div[data-testid="stCameraInput"] > div > button {
-        background: white !important;
+        z-index: 5;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # Single camera input with unique key per shield - Prevents stuck
-    camera_key = f"single_camera_{shield_name}_360px_unique"
-    captured = st.camera_input(f"📸 Capture for {shield_name.upper()} Shield - 360px Black Box", key=camera_key, label_visibility="collapsed")
+    tab_upload, tab_camera = st.tabs(["📁 Upload from Gallery", "📷 Camera Capture"])
     
-    return captured
+    captured_file = None
+    
+    with tab_upload:
+        st.markdown(f'<p style="color: white; font-size: 13px; text-align: center;">📁 Upload Image - {shield_name.upper()}</p>', unsafe_allow_html=True)
+        uploaded = st.file_uploader(f"Upload {shield_name}", type=["jpg","jpeg","png"], key=f"upload_{shield_name}_center_001", label_visibility="collapsed")
+        if uploaded:
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                st.image(uploaded, caption=f"{shield_name.upper()} Uploaded", use_container_width=True)
+            captured_file = uploaded
+    
+    with tab_camera:
+        st.markdown(f'<p style="color: white; font-size: 13px; text-align: center;">📷 Camera Capture - Center Shutter Button</p>', unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1,3,1])
+        with col2:
+            camera = st.camera_input(f"Camera {shield_name}", key=f"camera_{shield_name}_center_002", label_visibility="collapsed")
+            if camera:
+                st.image(camera, caption=f"{shield_name.upper()} Captured", use_container_width=True)
+                captured_file = camera
+    
+    return captured_file
+
+def show_scan_button(captured_file, shield_name):
+    if captured_file:
+        st.markdown("<div style='text-align: center; margin: 15px 0;'></div>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            if st.button(f"🔍 Scan & Verify {shield_name.upper()}", key=f"scan_verify_{shield_name}_one_button_only", use_container_width=True, type="primary"):
+                with st.spinner(f"🔍 Scanning {shield_name.upper()}..."):
+                    try:
+                        ext_txt, _ = extract_photo_text(captured_file)
+                        st.session_state[f"{shield_name}_text"] = ext_txt
+                        if shield_name == "sms":
+                            res, conf, breakdown, matched, expl = detect_sms(ext_txt)
+                            save_scan("SMS Scam Shield", ext_txt[:60], res, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state.sms_result = (res, conf, breakdown, matched, expl, ext_txt)
+                        elif shield_name == "email":
+                            res, conf, breakdown, matched, expl = detect_email(ext_txt)
+                            save_scan("Email Phishing Shield", ext_txt[:60], res, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state.email_result = (res, conf, breakdown, matched, expl, ext_txt)
+                        elif shield_name == "news":
+                            res, conf, breakdown, matched, expl = detect_news(ext_txt)
+                            save_scan("News Truth Shield", ext_txt[:60], res, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state.news_result = (res, conf, breakdown, matched, expl, ext_txt)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Scan error: {e}")
+        return True
+    return False
 
 # =============================================================================
 # CONSOLIDATED MEGA WHITELIST (200+ DOMAINS & VERIFIED PATTERNS)
@@ -1217,26 +1245,8 @@ elif st.session_state["logged_in"]:
                 with sub_photo:
                     st.markdown(f"#### {t('upload_any')}")
                     st.caption(t("upload_sub"))
-                    p_col1, p_col2 = st.columns([1.2, 1])
-                    with p_col1:
-                        up_sms = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"], key="up_file_sms")
-                        if up_sms:
-                            st.image(up_sms, caption="Document / Poster", use_container_width=True)
-                            if st.button("Scan Uploaded Document", key="btn_scan_up_sms", type="primary"):
-                                ext_txt, _ = extract_photo_text(up_sms)
-                                result, conf, breakdown, matched, expl = detect_sms(ext_txt)
-                                scan_type = "Poster" if any(w in up_sms.name.lower() for w in ["poster", "banner", "flyer", "ad"]) else "Document"
-                                save_scan(scan_type, ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                                st.session_state["sms_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                                st.rerun()
-                    with p_col2:
-                        sms_captured = single_camera_box("sms")
-                        if sms_captured:
-                            ext_txt, _ = extract_photo_text(sms_captured)
-                            result, conf, breakdown, matched, expl = detect_sms(ext_txt)
-                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state["sms_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                            st.rerun()
+                    captured_sms = single_camera_box("sms")
+                    show_scan_button(captured_sms, "sms")
                         
                     if st.session_state.get("sms_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["sms_result"]
@@ -1286,26 +1296,8 @@ elif st.session_state["logged_in"]:
                 with sub_photo:
                     st.markdown(f"#### {t('upload_any')}")
                     st.caption(t("upload_sub"))
-                    p_col1, p_col2 = st.columns([1.2, 1])
-                    with p_col1:
-                        up_email = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"], key="up_file_email")
-                        if up_email:
-                            st.image(up_email, caption="Email Document / Screenshot", use_container_width=True)
-                            if st.button("Scan Uploaded Document", key="btn_scan_up_email", type="primary"):
-                                ext_txt, _ = extract_photo_text(up_email)
-                                result, conf, breakdown, matched, expl = detect_email(ext_txt)
-                                scan_type = "Poster" if any(w in up_email.name.lower() for w in ["poster", "banner", "flyer", "ad"]) else "Document"
-                                save_scan(scan_type, ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                                st.session_state["email_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                                st.rerun()
-                    with p_col2:
-                        email_captured = single_camera_box("email")
-                        if email_captured:
-                            ext_txt, _ = extract_photo_text(email_captured)
-                            result, conf, breakdown, matched, expl = detect_email(ext_txt)
-                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state["email_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                            st.rerun()
+                    captured_email = single_camera_box("email")
+                    show_scan_button(captured_email, "email")
                         
                     if st.session_state.get("email_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["email_result"]
@@ -1355,26 +1347,18 @@ elif st.session_state["logged_in"]:
                 with sub_photo:
                     st.markdown(f"#### {t('upload_any')}")
                     st.caption(t("upload_sub"))
-                    p_col1, p_col2 = st.columns([1.2, 1])
-                    with p_col1:
-                        up_news = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"], key="up_file_news")
-                        if up_news:
-                            st.image(up_news, caption="News Article / Poster", use_container_width=True)
-                            if st.button("Scan Uploaded Document", key="btn_scan_up_news", type="primary"):
-                                ext_txt, _ = extract_photo_text(up_news)
-                                result, conf, breakdown, matched, expl = detect_news(ext_txt)
-                                scan_type = "Poster" if any(w in up_news.name.lower() for w in ["poster", "banner", "flyer", "ad"]) else "Document"
-                                save_scan(scan_type, ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                                st.session_state["news_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                                st.rerun()
-                    with p_col2:
-                        news_captured = single_camera_box("news")
-                        if news_captured:
-                            ext_txt, _ = extract_photo_text(news_captured)
-                            result, conf, breakdown, matched, expl = detect_news(ext_txt)
-                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state["news_result"] = (result, conf, breakdown, matched, expl, ext_txt)
-                            st.rerun()
+                    captured_news = single_camera_box("news")
+                    show_scan_button(captured_news, "news")
+                        
+                    if st.session_state.get("news_result"):
+                        res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["news_result"]
+                        if res_val == "REAL":
+                            st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - News</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - News</div>', unsafe_allow_html=True)
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_overall_conf_006")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_breakdown_006")
+                        show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "News Truth Shield")
                         
                     if st.session_state.get("news_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["news_result"]
