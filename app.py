@@ -496,19 +496,6 @@ st.markdown("""
         z-index: 99999;
     }
     
-    /* Glassmorphism Card for Welcome Login */
-    .login-glass-card {
-        background: rgba(255, 255, 255, 0.07);
-        backdrop-filter: blur(25px);
-        -webkit-backdrop-filter: blur(25px);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 20px;
-        padding: 36px 28px;
-        max-width: 380px;
-        margin: 20px auto;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-    }
-    
     /* Stat Cards */
     .stat-card-glass {
         background: rgba(255, 255, 255, 0.06);
@@ -932,8 +919,6 @@ if not st.session_state["logged_in"] and st.session_state["page"] == 1:
     _, col_center, _ = st.columns([1, 1.2, 1])
     
     with col_center:
-        st.markdown("<div class='login-glass-card'>", unsafe_allow_html=True)
-        
         # Logo: Assets logo or fallback blue S
         logo_data = get_logo()
         if logo_data:
@@ -977,8 +962,6 @@ if not st.session_state["logged_in"] and st.session_state["page"] == 1:
                     st.error("Enter 10 digits only - 0/10")
                 else:
                     st.warning("Please enter a valid 10-digit mobile number.")
-                
-        st.markdown("</div>", unsafe_allow_html=True)
         
     render_floating_assistant()
 
@@ -989,8 +972,6 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
     _, col_center, _ = st.columns([1, 1.2, 1])
     
     with col_center:
-        st.markdown("<div class='login-glass-card'>", unsafe_allow_html=True)
-        
         logo_data = get_logo()
         if logo_data:
             st.markdown(f'<div style="text-align:center; margin-bottom:14px;"><img src="{logo_data}" style="width:65px;height:65px;border-radius:14px;box-shadow:0 6px 20px rgba(37,99,235,0.35);"></div>', unsafe_allow_html=True)
@@ -1033,8 +1014,6 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
             st.session_state["page"] = 1
             st.rerun()
             
-        st.markdown("</div>", unsafe_allow_html=True)
-        
     render_floating_assistant()
 
 # =============================================================================
