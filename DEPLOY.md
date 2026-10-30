@@ -1,39 +1,44 @@
-# 🚀 SensVerify Deployment Guide (Render & Cloud)
+# 🚀 SensVerify Live Deployment Guide
 
-Follow these steps to deploy SensVerify on Render:
+Repository: `https://github.com/keert-cell/sensverify`
+Branch: `main`
 
-### Step 1: Push Code to GitHub
-Ensure all files (`app.py`, `Procfile`, `runtime.txt`, `requirements.txt`, `assets/`, `manifest.json`) are committed and pushed to your GitHub repository:
-```bash
-git add .
-git commit -m "SensVerify Final Verified Build"
-git push origin main
-```
+---
 
-### Step 2: Create Web Service on Render
-1. Go to [Render Dashboard](https://dashboard.render.com/).
-2. Click **New +** and select **Web Service**.
-3. Connect your repository: `keert-cell/sensverify`.
+## Option A: Deploy via Streamlit Community Cloud (Recommended & 100% Free)
 
-### Step 3: Configure Settings
-- **Name**: `sensverify`
-- **Region**: Singapore or Oregon
-- **Branch**: `main`
-- **Runtime**: `Python 3`
-- **Build Command**:
-  ```bash
-  pip install -r requirements.txt
-  ```
-- **Start Command**:
-  ```bash
-  streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
-  ```
+You can deploy directly using the **Deploy** button at the top-right of your running app or via [share.streamlit.io](https://share.streamlit.io):
 
-### Step 4: Environment Variables (Optional)
-If using Google OAuth, add:
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
+1. **Repository**: `keert-cell/sensverify`
+2. **Branch**: `main`
+3. **Main file path**: `app.py` (or `sensverify/app.py` or `sensverify.py`)
+4. **App URL (Path)**: `sensverify`
+5. Click **Deploy!**
 
-### Step 5: Deploy
-Click **Create Web Service**. Render will build and deploy your app at:
-`https://sensverify.onrender.com`
+Your live URL will be:
+👉 **`https://sensverify.streamlit.app`**
+
+---
+
+## Option B: Deploy on Render
+
+1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New + Web Service**.
+2. Connect your repo: `keert-cell/sensverify`.
+3. Configure:
+   - **Name**: `sensverify`
+   - **Region**: Singapore or Oregon
+   - **Branch**: `main`
+   - **Root Directory**: (Leave blank OR enter `sensverify` — both work)
+   - **Runtime**: `Python 3`
+   - **Build Command**:
+     ```bash
+     pip install -r requirements.txt
+     ```
+   - **Start Command**:
+     ```bash
+     streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+     ```
+4. Click **Create Web Service**.
+
+Your live URL will be:
+👉 **`https://sensverify.onrender.com`**
