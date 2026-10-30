@@ -164,7 +164,9 @@ TRANSLATOR = {
         "live_sensors": "LIVE-SENSORS - REAL-TIME ACTIVE - 24/7",
         "last_scan": "Last scan",
         "enter_name": "Enter Your Name",
-        "enter_email": "Enter Email (Optional)",
+        "enter_email": "Enter Email Address *",
+        "email_required": "⚠️ Email is mandatory. Please enter your email address to proceed.",
+        "invalid_email": "⚠️ Please enter a valid email address (e.g., name@example.com).",
         "or": "or",
         "dashboard": "Analytics Dashboard",
         "scan_history": "Scan History - Proof of Scans",
@@ -228,7 +230,9 @@ TRANSLATOR = {
         "live_sensors": "లైవ్-సెన్సార్లు - రియల్-టైమ్ యాక్టివ్ - 24/7",
         "last_scan": "చివరి స్కాన్",
         "enter_name": "మీ పేరు నమోదు చేయండి",
-        "enter_email": "ఇమెయిల్ నమోదు చేయండి (ఐచ్ఛికం)",
+        "enter_email": "ఇమెయిల్ చిరునామా నమోదు చేయండి *",
+        "email_required": "⚠️ ఇమెయిల్ తప్పనిసరి. కొనసాగడానికి దయచేసి మీ ఇమెయిల్ నమోదు చేయండి.",
+        "invalid_email": "⚠️ దయచేసి సరైన ఇమెయిల్ చిరునామాను నమోదు చేయండి (ఉదా: name@example.com).",
         "or": "లేదా",
         "dashboard": "విశ్లేషణ డాష్బోర్డ్",
         "scan_history": "స్కాన్ చరిత్ర - స్కాన్ల రుజువు",
@@ -292,7 +296,9 @@ TRANSLATOR = {
         "live_sensors": "लाइव-सेंसर - रीयल-टाइम सक्रिय - 24/7",
         "last_scan": "अंतिम स्कैन",
         "enter_name": "अपना नाम दर्ज करें",
-        "enter_email": "ईमेल दर्ज करें (वैकल्पिक)",
+        "enter_email": "ईमेल पता दर्ज करें *",
+        "email_required": "⚠️ ईमेल अनिवार्य है। आगे बढ़ने के लिए कृपया अपना ईमेल दर्ज करें।",
+        "invalid_email": "⚠️ कृपया एक वैध ईमेल पता दर्ज करें (उदा: name@example.com)।",
         "or": "या",
         "dashboard": "विश्लेषण डैशबोर्ड",
         "scan_history": "स्कैन इतिहास",
@@ -964,46 +970,22 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
 
         # Enter Defense Grid button
         if st.button(t("enter_defense"), type="primary", use_container_width=True):
-            name_val = in_name.strip() if in_name.strip() else ("User" if not in_email.strip() else in_email.split("@")[0].capitalize())
-            email_val = in_email.strip() if in_email.strip() else "-"
-            
-            # Determine method
-            if in_name.strip() and in_email.strip():
-                method_val = "Mobile + Email + Name"
-            elif in_name.strip():
-                method_val = "Mobile + Name"
+            email_clean = in_email.strip()
+            if not email_clean:
+                st.error(t("email_required"))
+            elif "@" not in email_clean or "." not in email_clean or len(email_clean) < 5:
+                st.error(t("invalid_email"))
             else:
-                method_val = "Mobile Only"
+                name_val = in_name.strip() if in_name.strip() else email_clean.split("@")[0].capitalize()
+                email_val = email_clean
+                method_val = "Mobile + Email + Name" if in_name.strip() else "Mobile + Email"
 
-            st.session_state["user_name"] = name_val
-            st.session_state["user_email"] = email_val
-            st.session_state["user_method"] = method_val
-            record_login(m, name_val, email_val, method_val)
-            st.session_state["logged_in"] = True
-            st.rerun()
-
-        # Divider with ONLY "or" / "లేదా" symbol
-        or_text = t("or")
-        st.markdown(f"""
-            <div style="display:flex; align-items:center; justify-content:center; margin:20px 0;">
-                <div style="flex:1; height:1px; background:rgba(255,255,255,0.2);"></div>
-                <div style="margin:0 15px; color:#94A3B8; font-size:14px;">{or_text}</div>
-                <div style="flex:1; height:1px; background:rgba(255,255,255,0.2);"></div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # Continue with Google button
-        if st.button(f"🌐  {t('method_google')}", type="secondary", use_container_width=True):
-            g_name = in_name.strip() if in_name.strip() else "Google User"
-            g_email = in_email.strip() if in_email.strip() else f"{g_name.lower().replace(' ', '')}@gmail.com"
-            method_val = "Google"
-
-            st.session_state["user_name"] = g_name
-            st.session_state["user_email"] = g_email
-            st.session_state["user_method"] = method_val
-            record_login(m, g_name, g_email, method_val)
-            st.session_state["logged_in"] = True
-            st.rerun()
+                st.session_state["user_name"] = name_val
+                st.session_state["user_email"] = email_val
+                st.session_state["user_method"] = method_val
+                record_login(m, name_val, email_val, method_val)
+                st.session_state["logged_in"] = True
+                st.rerun()
 
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         if st.button("← Back", use_container_width=True):
