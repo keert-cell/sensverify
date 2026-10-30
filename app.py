@@ -1150,8 +1150,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - SMS</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - SMS</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="sms_scam_overall_conf_001")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="sms_scam_breakdown_001")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "SMS Scam Shield")
                         
                 with sub_photo:
@@ -1178,8 +1178,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - SMS</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - SMS</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_overall_conf_004")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_breakdown_004")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "SMS Scam Shield")
             
             # --- SHIELD 2: EMAIL PHISHING SHIELD ---
@@ -1213,8 +1213,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - Email</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - Email</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="email_phish_overall_conf_002")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="email_phish_breakdown_002")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "Email Phishing Shield")
                         
                 with sub_photo:
@@ -1241,8 +1241,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - Email</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - Email</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_overall_conf_005")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_breakdown_005")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "Email Phishing Shield")
 
             # --- SHIELD 3: NEWS TRUTH SHIELD ---
@@ -1276,8 +1276,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - News</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - News</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="news_truth_overall_conf_003")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="news_truth_breakdown_003")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "News Truth Shield")
                         
                 with sub_photo:
@@ -1304,8 +1304,8 @@ elif st.session_state["logged_in"]:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#00FF88,#00D4FF);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:#052e16;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,255,136,0.3);">🟢 REAL - {conf_val}% Safe - News</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background:linear-gradient(135deg,#FF2D55,#FF8E53);padding:18px;border-radius:16px;text-align:center;font-size:22px;font-weight:bold;color:white;margin-bottom:14px;box-shadow:0 8px 24px rgba(255,45,85,0.3);">🔴 FAKE - {conf_val}% Scam - News</div>', unsafe_allow_html=True)
-                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False})
-                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(modern_confidence_bar("Overall Confidence", conf_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_overall_conf_006")
+                        st.plotly_chart(modern_breakdown_chart(bd_val, res_val), use_container_width=True, config={'displayModeBar': False}, key="doc_breakdown_006")
                         show_visual_ai_forensics(txt_val, res_val, m_val, exp_val, "News Truth Shield")
 
         # TAB 2: MY SCAN HISTORY (PRIVATE TO USER)
