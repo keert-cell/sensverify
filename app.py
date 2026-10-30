@@ -950,40 +950,107 @@ elif st.session_state["logged_in"]:
 
     st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
-    # Helper function for Photo / Document / Poster Universal Check with WhatsApp Flip Model
+    # Helper function for Photo / Document / Poster Universal Check with Modern Single Camera & Small Flip Icon
     def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
-        col1, col2 = st.columns([1, 1.4])
+        col1, col2 = st.columns([1, 1.5])
 
         with col1:
-            st.markdown("#### 📤 Upload Any Photo / Document / Poster")
+            st.markdown("#### 📤 Upload Photo / Document")
             up_file = st.file_uploader(
-                f"Upload - {shield_name}",
+                "Upload",
                 type=["jpg", "png", "pdf", "jpeg"],
                 label_visibility="collapsed",
-                key=f"up_{key_prefix}"
+                key=f"upload_{key_prefix}"
             )
-            st.caption("200MB per file • JPG, PNG, PDF")
+            st.caption("JPG, PNG, PDF")
 
         with col2:
-            is_front = (st.session_state.get("camera_facing", "user") == "user")
-            cam_title = "Front - Selfie / Face View" if is_front else "Back - Document Clear Scan"
-            st.markdown(f"#### 📷 Camera - {cam_title}")
+            st.markdown("#### 📷 Camera")
+            camera_final_html = f"""
+            <style>
+            .cam-wrap {{ position:relative; width:100%; background:#000; border-radius:12px; overflow:hidden; }}
+            #video_{key_prefix} {{ width:100%; height:320px; object-fit:cover; display:block; }}
+            #preview_{key_prefix} {{ width:100%; margin-top:8px; border-radius:12px; display:none; }}
+            .icon-btn {{
+                position:absolute;
+                bottom:12px;
+                right:12px;
+                width:44px;
+                height:44px;
+                border-radius:50%;
+                background:rgba(255,255,255,0.9);
+                border:none;
+                cursor:pointer;
+                font-size:20px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                box-shadow:0 2px 8px rgba(0,0,0,0.3);
+                z-index:10;
+            }}
+            .capture-btn {{
+                position:absolute;
+                bottom:12px;
+                left:50%;
+                transform:translateX(-50%);
+                width:56px;
+                height:56px;
+                border-radius:50%;
+                background:white;
+                border:4px solid rgba(255,255,255,0.8);
+                cursor:pointer;
+                z-index:10;
+            }}
+            .status {{ color:#aaa; font-size:11px; margin-top:6px; text-align:center; }}
+            </style>
+            <div class="cam-wrap">
+                <video id="video_{key_prefix}" autoplay playsinline></video>
+                <button class="capture-btn" id="captureBtn_{key_prefix}" title="Capture"></button>
+                <button class="icon-btn" id="flipBtn_{key_prefix}" title="Flip">🔄</button>
+            </div>
+            <canvas id="canvas_{key_prefix}" style="display:none;"></canvas>
+            <img id="preview_{key_prefix}" />
+            <div class="status" id="status_{key_prefix}">Front • Tap 🔄 to switch</div>
 
-            # Reverse button like Whatsapp
-            if st.button("🔄 Reverse Camera (Front ↔️ Back) - Whatsapp Style", use_container_width=True, key=f"flip_btn_{key_prefix}"):
-                toggle_camera()
-                st.rerun()
+            <script>
+            let facing_{key_prefix} = "user";
+            let stream_{key_prefix} = null;
+            const video = document.getElementById('video_{key_prefix}');
+            const canvas = document.getElementById('canvas_{key_prefix}');
+            const preview = document.getElementById('preview_{key_prefix}');
+            const status = document.getElementById('status_{key_prefix}');
 
-            st.caption(f"Current: {'🤳 Front Camera - Selfie / Face View' if is_front else '📄 Back Camera - Document / Poster Clear'} | Click 🔄 to flip like Whatsapp video call")
-
-            # Camera input (switches key & facing label cleanly)
-            cam_photo = st.camera_input(
-                f"Camera Capture ({cam_title})",
-                key=f"cam_{key_prefix}_{st.session_state.get('camera_facing', 'user')}",
-                label_visibility="collapsed"
-            )
-
-        st.markdown(f"<div style='font-size:11px; color:#94A3B8; margin-top:6px; margin-bottom:14px;'>💡 {t('camera_guidance')}</div>", unsafe_allow_html=True)
+            async function startCam(f) {{
+                if(stream_{key_prefix}) stream_{key_prefix}.getTracks().forEach(t=>t.stop());
+                try {{
+                    stream_{key_prefix} = await navigator.mediaDevices.getUserMedia({{
+                        video: {{ facingMode: f }},
+                        audio: false
+                    }});
+                    video.srcObject = stream_{key_prefix};
+                    status.innerText = (f==='user' ? 'Front' : 'Back') + ' • Tap 🔄 to switch';
+                }} catch(e) {{
+                    status.innerText = "Camera not available - Use Upload";
+                }}
+            }}
+            document.getElementById('flipBtn_{key_prefix}').onclick = () => {{
+                facing_{key_prefix} = facing_{key_prefix}==='user' ? 'environment' : 'user';
+                startCam(facing_{key_prefix});
+            }};
+            document.getElementById('captureBtn_{key_prefix}').onclick = () => {{
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                preview.src = canvas.toDataURL('image/jpeg');
+                preview.style.display = 'block';
+                status.innerText = "Captured ✓ - Use for scan";
+            }};
+            startCam(facing_{key_prefix});
+            </script>
+            """
+            components.html(camera_final_html, height=400)
+            st.caption("Tap white circle to capture • Tap 🔄 icon at bottom-right corner to flip Front ↔️ Back")
+            cam_photo = st.camera_input("Instant Snapshot for Analysis", key=f"cam_{key_prefix}", label_visibility="collapsed")
 
         active_media = None
         media_source_name = ""
@@ -992,7 +1059,7 @@ elif st.session_state["logged_in"]:
             media_source_name = "Uploaded File"
         elif cam_photo is not None:
             active_media = cam_photo
-            media_source_name = f"Camera Capture ({'Front' if is_front else 'Back'})"
+            media_source_name = "Camera Snapshot"
 
         # Black Preview Fix: When camera closed / none selected, show friendly info
         if active_media is None:
