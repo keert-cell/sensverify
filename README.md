@@ -1,3 +1,13 @@
+# 🛡️ SensVerify LIVE
+
+### 🌐 Live Links:
+
+*Primary:* https://sensverify.onrender.com 🟢
+*Backup:* https://sensverify.streamlit.app 🟢
+
+| Primary - Render | https://sensverify.onrender.com |
+| Backup - Streamlit | https://sensverify.streamlit.app |
+
 # 🛡️ SensVerify Universal Defense Grid
 
 SensVerify is an Autonomous Cyber Threat Grid & Real-Time Threat Verification platform.
