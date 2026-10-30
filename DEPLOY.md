@@ -26,7 +26,7 @@ git push origin main
   ```
 - **Start Command**:
   ```bash
-  streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+  streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
   ```
 
 ### Step 4: Environment Variables (Optional)
