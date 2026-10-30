@@ -458,9 +458,12 @@ st.markdown("""
         color: #F8FAFC !important;
     }
     
-    /* Hide default Streamlit decoration headers */
+    /* Hide default Streamlit decoration headers and default input instructions */
     header[data-testid="stHeader"] {
         background: transparent !important;
+    }
+    div[data-testid="InputInstructions"] {
+        display: none !important;
     }
     
     /* Top-Right Fixed Translator Container */
@@ -608,41 +611,16 @@ def render_translator_pill():
     languages = list(TRANSLATOR.keys())
     curr_lang = st.session_state.get("lang", "English")
     idx = languages.index(curr_lang) if curr_lang in languages else 0
-    
-    if not st.session_state.get("logged_in", False):
-        st.markdown("""
-        <style>
-        div[data-testid="stSelectbox"]:has(input[aria-label="Language"]),
-        div[data-testid="stSelectbox"]:has(div:contains("English")) {
-            position: fixed !important;
-            top: 14px !important;
-            right: 18px !important;
-            width: 125px !important;
-            z-index: 99999 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        chosen = st.selectbox(
-            "Language",
-            options=languages,
-            index=idx,
-            label_visibility="collapsed",
-            key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
-        )
-        if chosen != st.session_state["lang"]:
-            st.session_state["lang"] = chosen
-            st.rerun()
-    else:
-        chosen = st.selectbox(
-            "Language",
-            options=languages,
-            index=idx,
-            label_visibility="collapsed",
-            key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
-        )
-        if chosen != st.session_state["lang"]:
-            st.session_state["lang"] = chosen
-            st.rerun()
+    chosen = st.selectbox(
+        "Language",
+        options=languages,
+        index=idx,
+        label_visibility="collapsed",
+        key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
+    )
+    if chosen != st.session_state["lang"]:
+        st.session_state["lang"] = chosen
+        st.rerun()
 
 # -----------------------------------------------------------------------------
 # REUSABLE SINGLE CAMERA BOX (360PX BLACK VIEWPORT, WHITE CIRCLE, FLIP ICON)
@@ -971,8 +949,12 @@ def render_floating_assistant():
                 st.rerun()
 
 # =============================================================================
-# PART 1: WELCOME PAGE - PAGE 1 - ULTRA CLEAN (NO FOOTER TEXTS)
+# PART 1: WELCOME PAGE - PAGE 1 - ULTRA CLEAN (NO FOOTER TEXTS - NO GRAY BOX)
 # =============================================================================
+if not st.session_state["logged_in"]:
+    with st.sidebar:
+        render_translator_pill()
+
 if not st.session_state["logged_in"] and st.session_state["page"] == 1:
     _, col_center, _ = st.columns([1, 1.2, 1])
     
@@ -994,38 +976,41 @@ if not st.session_state["logged_in"] and st.session_state["page"] == 1:
         """, unsafe_allow_html=True)
         
         # Mobile Input with +91 prefix - max_chars=10 strictly for 0/10 counter
-        mobile_in = st.text_input(
-            "+91 Enter Mobile Number",
+        mobile_input = st.text_input(
+            "Mobile",
+            max_chars=10,
             placeholder="+91 Enter Mobile Number",
             label_visibility="collapsed",
-            max_chars=10,
             key="mobile_input"
         )
         
-        # Extract digits only
-        clean_mob = re.sub(r"[^\d]", "", mobile_in)
-        if len(clean_mob) != 10 and len(clean_mob) != 0:
-            st.caption("Please enter 10 digits")
+        # Exact 0/10 counter display
+        if mobile_input:
+            st.markdown(f"<div style='text-align:right; color:#CCCCCC; font-size:12px; margin-top:-15px; margin-bottom:12px;'>{len(mobile_input)}/10</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='text-align:right; color:#CCCCCC; font-size:12px; margin-top:-15px; margin-bottom:12px;'>0/10</div>", unsafe_allow_html=True)
             
-        # Continue Button - Enabled only when 10 digits entered
-        is_valid_10 = (len(clean_mob) == 10)
         btn_label = t("continue")
-        
-        if st.button(btn_label, type="primary", use_container_width=True, disabled=(not is_valid_10)):
-            if is_valid_10:
+        if st.button(btn_label, type="primary", use_container_width=True):
+            clean_mob = re.sub(r"[^\d]", "", mobile_input)
+            if clean_mob.startswith("91") and len(clean_mob) == 12:
+                clean_mob = clean_mob[2:]
+            if clean_mob and len(clean_mob) == 10 and clean_mob.isdigit():
                 st.session_state["mobile_temp"] = clean_mob
                 st.session_state["page"] = 2
                 st.rerun()
             else:
-                st.warning("Please enter a valid 10-digit mobile number.")
+                if mobile_input:
+                    st.error("Enter 10 digits only - 0/10")
+                else:
+                    st.warning("Please enter a valid 10-digit mobile number.")
                 
         st.markdown("</div>", unsafe_allow_html=True)
         
     render_floating_assistant()
-    render_translator_pill()
 
 # =============================================================================
-# PART 2: PAGE 2 - NAME + EMAIL + GOOGLE (ONLY "or")
+# PART 2: PAGE 2 - NAME + EMAIL + GOOGLE (ONLY "or" - NO GRAY BOX)
 # =============================================================================
 elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
     _, col_center, _ = st.columns([1, 1.2, 1])
@@ -1033,6 +1018,12 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
     with col_center:
         st.markdown("<div class='login-glass-card'>", unsafe_allow_html=True)
         
+        logo_data = get_logo()
+        if logo_data:
+            st.markdown(f'<div style="text-align:center; margin-bottom:14px;"><img src="{logo_data}" style="width:65px;height:65px;border-radius:14px;box-shadow:0 6px 20px rgba(37,99,235,0.35);"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="text-align:center; margin-bottom:14px;"><div style="width:65px;height:65px;background:linear-gradient(135deg,#3b82f6,#1e3a8a);border-radius:14px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:30px;margin:0 auto;">S</div></div>', unsafe_allow_html=True)
+
         m = st.session_state.get("mobile_temp", "9848012345")
         masked_mob = f"📱 {m[:4]}****{m[-2:]}" if len(m) >= 6 else f"📱 {m}"
         st.markdown(f"""
@@ -1088,7 +1079,6 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
         st.markdown("</div>", unsafe_allow_html=True)
         
     render_floating_assistant()
-    render_translator_pill()
 
 # =============================================================================
 # PART 3 & 4: DEFENSE GRID (AFTER LOGIN)
