@@ -950,121 +950,61 @@ elif st.session_state["logged_in"]:
 
     st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
-    # Helper function for Photo / Document / Poster Universal Check with Modern Single Camera & Small Flip Icon
-    def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
+    # === COMMON FUNCTION - SINGLE CAMERA WITH SMALL ICON - USE FOR ALL 3 SHIELDS ===
+    def photo_tab_with_single_camera(key_prefix):
         col1, col2 = st.columns([1, 1.5])
-
         with col1:
-            st.markdown("#### 📤 Upload Photo / Document")
-            up_file = st.file_uploader(
-                "Upload",
-                type=["jpg", "png", "pdf", "jpeg"],
-                label_visibility="collapsed",
-                key=f"upload_{key_prefix}"
-            )
+            st.markdown("#### 📤 Upload")
+            up = st.file_uploader("Upload", type=["jpg", "png", "pdf", "jpeg"], label_visibility="collapsed", key=f"{key_prefix}_up")
             st.caption("JPG, PNG, PDF")
-
         with col2:
             st.markdown("#### 📷 Camera")
-            camera_final_html = f"""
+            cam_html = f"""
             <style>
-            .cam-wrap {{ position:relative; width:100%; background:#000; border-radius:12px; overflow:hidden; }}
-            #video_{key_prefix} {{ width:100%; height:320px; object-fit:cover; display:block; }}
-            #preview_{key_prefix} {{ width:100%; margin-top:8px; border-radius:12px; display:none; }}
-            .icon-btn {{
-                position:absolute;
-                bottom:12px;
-                right:12px;
-                width:44px;
-                height:44px;
-                border-radius:50%;
-                background:rgba(255,255,255,0.9);
-                border:none;
-                cursor:pointer;
-                font-size:20px;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                box-shadow:0 2px 8px rgba(0,0,0,0.3);
-                z-index:10;
-            }}
-            .capture-btn {{
-                position:absolute;
-                bottom:12px;
-                left:50%;
-                transform:translateX(-50%);
-                width:56px;
-                height:56px;
-                border-radius:50%;
-                background:white;
-                border:4px solid rgba(255,255,255,0.8);
-                cursor:pointer;
-                z-index:10;
-            }}
-            .status {{ color:#aaa; font-size:11px; margin-top:6px; text-align:center; }}
+            .cam-wrap{{position:relative;width:100%;background:#000;border-radius:12px;overflow:hidden}}
+            #video_{key_prefix}{{width:100%;height:320px;object-fit:cover;display:block}}
+            #preview_{key_prefix}{{width:100%;margin-top:8px;border-radius:12px;display:none}}
+            .icon-btn{{position:absolute;bottom:12px;right:12px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.9);border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);z-index:10}}
+            .capture-btn{{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;background:white;border:4px solid rgba(255,255,255,0.8);cursor:pointer;z-index:10}}
+            .status{{color:#aaa;font-size:11px;margin-top:6px;text-align:center}}
             </style>
             <div class="cam-wrap">
                 <video id="video_{key_prefix}" autoplay playsinline></video>
-                <button class="capture-btn" id="captureBtn_{key_prefix}" title="Capture"></button>
-                <button class="icon-btn" id="flipBtn_{key_prefix}" title="Flip">🔄</button>
+                <button class="capture-btn" id="captureBtn_{key_prefix}"></button>
+                <button class="icon-btn" id="flipBtn_{key_prefix}">🔄</button>
             </div>
-            <canvas id="canvas_{key_prefix}" style="display:none;"></canvas>
+            <canvas id="canvas_{key_prefix}" style="display:none"></canvas>
             <img id="preview_{key_prefix}" />
             <div class="status" id="status_{key_prefix}">Front • Tap 🔄 to switch</div>
-
             <script>
-            let facing_{key_prefix} = "user";
-            let stream_{key_prefix} = null;
-            const video = document.getElementById('video_{key_prefix}');
-            const canvas = document.getElementById('canvas_{key_prefix}');
-            const preview = document.getElementById('preview_{key_prefix}');
-            const status = document.getElementById('status_{key_prefix}');
-
-            async function startCam(f) {{
+            let facing_{key_prefix}="user"; let stream_{key_prefix}=null;
+            const video=document.getElementById('video_{key_prefix}');
+            const canvas=document.getElementById('canvas_{key_prefix}');
+            const preview=document.getElementById('preview_{key_prefix}');
+            const status=document.getElementById('status_{key_prefix}');
+            async function startCam(f){{
                 if(stream_{key_prefix}) stream_{key_prefix}.getTracks().forEach(t=>t.stop());
-                try {{
-                    stream_{key_prefix} = await navigator.mediaDevices.getUserMedia({{
-                        video: {{ facingMode: f }},
-                        audio: false
-                    }});
-                    video.srcObject = stream_{key_prefix};
-                    status.innerText = (f==='user' ? 'Front' : 'Back') + ' • Tap 🔄 to switch';
-                }} catch(e) {{
-                    status.innerText = "Camera not available - Use Upload";
-                }}
+                try{{ stream_{key_prefix}=await navigator.mediaDevices.getUserMedia({{video:{{facingMode:f}}}}); video.srcObject=stream_{key_prefix}; status.innerText=(f==='user'?'Front':'Back')+' • Tap 🔄 to switch'; }}catch(e){{ status.innerText="Camera not available - Use Upload"; }}
             }}
-            document.getElementById('flipBtn_{key_prefix}').onclick = () => {{
-                facing_{key_prefix} = facing_{key_prefix}==='user' ? 'environment' : 'user';
-                startCam(facing_{key_prefix});
-            }};
-            document.getElementById('captureBtn_{key_prefix}').onclick = () => {{
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                preview.src = canvas.toDataURL('image/jpeg');
-                preview.style.display = 'block';
-                status.innerText = "Captured ✓ - Use for scan";
-            }};
+            document.getElementById('flipBtn_{key_prefix}').onclick=()=>{{ facing_{key_prefix}=facing_{key_prefix}==='user'?'environment':'user'; startCam(facing_{key_prefix}); }};
+            document.getElementById('captureBtn_{key_prefix}').onclick=()=>{{ canvas.width=video.videoWidth; canvas.height=video.videoHeight; canvas.getContext('2d').drawImage(video,0,0); preview.src=canvas.toDataURL('image/jpeg'); preview.style.display='block'; status.innerText="Captured ✓"; }};
             startCam(facing_{key_prefix});
             </script>
             """
-            components.html(camera_final_html, height=400)
-            st.caption("Tap white circle to capture • Tap 🔄 icon at bottom-right corner to flip Front ↔️ Back")
-            cam_photo = st.camera_input("Instant Snapshot for Analysis", key=f"cam_{key_prefix}", label_visibility="collapsed")
+            components.html(cam_html, height=400)
+            st.caption("Tap white circle to capture • Tap 🔄 icon to flip")
+            cam_snap = st.camera_input("Instant Snapshot for Analysis", key=f"{key_prefix}_cam_snap", label_visibility="collapsed")
+        return up if up is not None else cam_snap
 
-        active_media = None
-        media_source_name = ""
-        if up_file is not None:
-            active_media = up_file
-            media_source_name = "Uploaded File"
-        elif cam_photo is not None:
-            active_media = cam_photo
-            media_source_name = "Camera Snapshot"
+    # Helper function for Photo / Document / Poster Universal Check using photo_tab_with_single_camera
+    def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
+        active_media = photo_tab_with_single_camera(key_prefix)
 
         # Black Preview Fix: When camera closed / none selected, show friendly info
         if active_media is None:
             st.info(t("camera_closed_msg"))
         else:
+            media_source_name = getattr(active_media, "name", "Snapshot")
             c_i1, c_i2 = st.columns([1, 2])
             with c_i1:
                 st.image(active_media, caption=f"Capture Preview ({media_source_name})", use_container_width=True)
