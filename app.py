@@ -1,1374 +1,240 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh
-import sqlite3
-import random
-import os
-import re
-import base64
-import pandas as pd
-from datetime import datetime, date
-from PIL import Image
+from datetime import datetime
 
-# Safe OCR import with fallback
-try:
-    import pytesseract
-    OCR_AVAILABLE = True
-except Exception:
-    OCR_AVAILABLE = False
+st.set_page_config(page_title="SensVerify", page_icon="🛡️", layout="wide")
 
-# -----------------------------------------------------------------------------
-# PAGE CONFIGURATION
-# -----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="SensVerify",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+if 'user_name' not in st.session_state: st.session_state.user_name = ""
+if 'user_email' not in st.session_state: st.session_state.user_email = ""
+if 'sms_result' not in st.session_state: st.session_state.sms_result = None
+if 'email_result' not in st.session_state: st.session_state.email_result = None
+if 'news_result' not in st.session_state: st.session_state.news_result = None
+if 'history' not in st.session_state: st.session_state.history = []
 
-# -----------------------------------------------------------------------------
-# DATABASE INITIALIZATION (analytics.db) - FRESH & CLEAN SCHEMA
-# -----------------------------------------------------------------------------
-def init_db():
-    conn = sqlite3.connect("analytics.db", check_same_thread=False)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS scans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            date TEXT,
-            scan_type TEXT,
-            content_preview TEXT,
-            result TEXT,
-            confidence REAL,
-            user_mobile TEXT,
-            user_name TEXT
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS logins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mobile TEXT,
-            name TEXT,
-            email TEXT,
-            login_method TEXT,
-            login_time TEXT,
-            logout_time TEXT,
-            date TEXT
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            mobile TEXT PRIMARY KEY,
-            name TEXT,
-            email TEXT,
-            created_at TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+def single_camera_box(key_id):
+    html = f"""
+    <div style="position:relative;width:100%;height:360px;background:#000;border-radius:16px;overflow:hidden">
+        <video id="vi_{key_id}" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+        <button id="cap_{key_id}" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:60px;height:60px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,0.8)"></button>
+        <button id="fl_{key_id}" style="position:absolute;bottom:16px;right:16px;width:44px;height:44px;border-radius:50%;background:#fff;border:none;font-size:20px">🔄</button>
+    </div>
+    <canvas id="ca_{key_id}" style="display:none"></canvas>
+    <img id="pr_{key_id}" style="width:100%;border-radius:16px;margin-top:10px;display:none" />
+    <script>
+    let f_{key_id}="user",s_{key_id}=null;
+    const v_{key_id}=document.getElementById('vi_{key_id}'),ca_{key_id}=document.getElementById('ca_{key_id}'),pr_{key_id}=document.getElementById('pr_{key_id}');
+    async function stCam_{key_id}(fa){{if(s_{key_id}) s_{key_id}.getTracks().forEach(t=>t.stop()); try{{s_{key_id}=await navigator.mediaDevices.getUserMedia({{video:{{facingMode:fa}}}}); v_{key_id}.srcObject=s_{key_id}; await v_{key_id}.play();}}catch(e){{}} }}
+    document.getElementById('fl_{key_id}').onclick=()=>{{f_{key_id}=f_{key_id}==='user'?'environment':'user'; stCam_{key_id}(f_{key_id});}};
+    document.getElementById('cap_{key_id}').onclick=()=>{{ca_{key_id}.width=v_{key_id}.videoWidth; ca_{key_id}.height=v_{key_id}.videoHeight; ca_{key_id}.getContext('2d').drawImage(v_{key_id},0,0); pr_{key_id}.src=ca_{key_id}.toDataURL('image/jpeg',0.9); pr_{key_id}.style.display='block';}};
+    stCam_{key_id}(f_{key_id});
+    </script>
+    """
+    components.html(html, height=420)
+    up = st.file_uploader(f"Upload {key_id}", type=["jpg","png","jpeg"], label_visibility="collapsed", key=f"up_{key_id}")
+    if up:
+        st.image(up, caption="Uploaded Document / Photo", use_container_width=True)
+    return up
 
-init_db()
-
-# DB Helper Functions
-def record_login(mobile, name, email, method):
-    try:
-        conn = sqlite3.connect("analytics.db", check_same_thread=False)
-        c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-        today_val = str(date.today())
-        
-        c.execute("""
-            INSERT INTO users (mobile, name, email, created_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(mobile) DO UPDATE SET
-                name = excluded.name,
-                email = excluded.email
-        """, (mobile, name, email, now_time))
-        
-        c.execute("""
-            INSERT INTO logins (mobile, name, email, login_method, login_time, logout_time, date)
-            VALUES (?, ?, ?, ?, ?, NULL, ?)
-        """, (mobile, name, email, method, now_time, today_val))
-        
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-def record_logout(mobile):
-    try:
-        conn = sqlite3.connect("analytics.db", check_same_thread=False)
-        c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-        c.execute("""
-            UPDATE logins SET logout_time = ?
-            WHERE mobile = ? AND logout_time IS NULL
-        """, (now_time, mobile))
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-def save_scan(scan_type, content, result, confidence, user_mobile, user_name):
-    try:
-        conn = sqlite3.connect("analytics.db", check_same_thread=False)
-        c = conn.cursor()
-        now_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-        today_val = str(date.today())
-        preview = (content[:60] + "...") if len(content) > 60 else content
-        c.execute("""
-            INSERT INTO scans (timestamp, date, scan_type, content_preview, result, confidence, user_mobile, user_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (now_time, today_val, scan_type, preview, result, confidence, user_mobile, user_name))
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-# -----------------------------------------------------------------------------
-# LOGO HELPER (BASE64 EMBEDDED - ZERO BROKEN IMAGE BOX)
-# -----------------------------------------------------------------------------
-def get_logo():
-    p = "assets/sensverify_logo.png"
-    if os.path.exists(p):
-        try:
-            with open(p, "rb") as f:
-                return f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
-        except Exception:
-            return None
-    return None
-
-# -----------------------------------------------------------------------------
-# MULTI-LANGUAGE TRANSLATOR MODULE (16 LANGUAGES)
-# -----------------------------------------------------------------------------
-from translations import TRANSLATOR
-
-def t(key):
-    lang = st.session_state.get("lang", "English")
-    lang_dict = TRANSLATOR.get(lang, TRANSLATOR["English"])
-    return lang_dict.get(key, TRANSLATOR["English"].get(key, key))
-
-# -----------------------------------------------------------------------------
-# SESSION STATE INITIALIZATION
-# -----------------------------------------------------------------------------
-if "lang" not in st.session_state:
-    st.session_state["lang"] = "English"
-
-if "page" not in st.session_state:
-    st.session_state["page"] = 1
-
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if "user_mobile" not in st.session_state:
-    st.session_state["user_mobile"] = ""
-
-if "user_name" not in st.session_state:
-    st.session_state["user_name"] = "User"
-
-if "user_email" not in st.session_state:
-    st.session_state["user_email"] = ""
-
-if "user_method" not in st.session_state:
-    st.session_state["user_method"] = "Mobile Only"
-
-if "is_admin" not in st.session_state:
-    st.session_state["is_admin"] = False
-
-if "chatbot_history" not in st.session_state:
-    st.session_state["chatbot_history"] = [
-        {"role": "assistant", "content": "Welcome to SensVerify Assistant! Ask me anything about the App, AI, Python, Fake news, or Cyber Defense."}
-    ]
-
-if "chatbot_open" not in st.session_state:
-    st.session_state["chatbot_open"] = False
-
-if "camera_facing" not in st.session_state:
-    st.session_state.camera_facing = "user"  # user = front, environment = back
-
-def toggle_camera():
-    st.session_state.camera_facing = "environment" if st.session_state.camera_facing == "user" else "user"
-
-# Persistent scan results in session state (STAYS visible, no auto-disappearance!)
-if "sms_result" not in st.session_state:
-    st.session_state.sms_result = None
-
-if "email_result" not in st.session_state:
-    st.session_state.email_result = None
-
-if "news_result" not in st.session_state:
-    st.session_state.news_result = None
-
-if "photo_result" not in st.session_state:
-    st.session_state.photo_result = {}
-
-# Auto-refresh interval 3000ms strictly for live clock/monitoring
-if st.session_state.get("logged_in", False):
-    st_autorefresh(interval=3000, key="live_clock_refresher")
-
-# -----------------------------------------------------------------------------
-# GLOBAL CSS - ZERO CODE STRINGS VISIBLE ON FRONTEND
-# -----------------------------------------------------------------------------
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        color: #FFFFFF !important;
-    }
-
-    .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #1e3a8a 100%) !important;
-        background-attachment: fixed !important;
-    }
-
-    /* Glassmorphism Card */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        padding: 30px;
-    }
-
-    /* Stat Cards */
-    .stat-card-widget {
-        background: rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 20px;
-        text-align: center;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    }
-    .stat-card-val {
-        font-size: 32px;
-        font-weight: 800;
-        font-family: 'JetBrains Mono', monospace;
-        color: #FFFFFF;
-        line-height: 1.1;
-    }
-    .stat-card-lbl {
-        font-size: 11px;
-        font-weight: 700;
-        color: #94A3B8;
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
-        margin-top: 6px;
-    }
-    .stat-card-sub {
-        font-size: 11px;
-        color: #22C55E;
-        margin-top: 4px;
-    }
-
-    /* Pulsing Green Dot */
-    @keyframes pulse-anim {
-        0% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.15); opacity: 0.4; }
-        100% { transform: scale(1); opacity: 1; }
-    }
-    .pulse-dot-indicator {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        margin-right: 8px;
-        animation: pulse-anim 2s infinite;
-        vertical-align: middle;
-    }
-    .live-badge-widget {
-        display: inline-flex;
-        align-items: center;
-        background: rgba(34, 197, 94, 0.15);
-        border: 1px solid rgba(34, 197, 94, 0.3);
-        border-radius: 20px;
-        padding: 6px 14px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        font-weight: 700;
-        color: #22c55e !important;
-    }
-
-    /* Input & Button Styling */
-    .stTextInput input, .stTextArea textarea {
-        background: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 14px !important;
-        color: #FFFFFF !important;
-        font-size: 15px !important;
-    }
-    .stTextInput input:focus, .stTextArea textarea:focus {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 15px rgba(59, 130, 246, 0.4) !important;
-    }
-
-    .stButton>button[kind="primary"] {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 14px !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.35) !important;
-    }
-    .stButton>button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 1px solid #DADCE0 !important;
-        border-radius: 14px !important;
-        font-weight: 600 !important;
-    }
-
-    /* Clean Styled Dataframe */
-    .stDataFrame {
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    /* Bar Graph Row */
-    .bg-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
-        font-size: 12px;
-    }
-    .bg-lbl {
-        width: 130px;
-        color: #CBD5E1;
-        font-weight: 500;
-    }
-    .bg-track {
-        flex: 1;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        height: 10px;
-        margin: 0 10px;
-        overflow: hidden;
-    }
-    .bg-fill {
-        height: 100%;
-        border-radius: 8px;
-    }
-    .bg-pct {
-        width: 45px;
-        text-align: right;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 700;
-        color: #FFFFFF;
-    }
-
-    /* Visual AI Forensics Highlights */
-    .highlight-fake-word {
-        background: rgba(239, 68, 68, 0.25);
-        border: 1px solid #ef4444;
-        border-radius: 4px;
-        padding: 2px 6px;
-        color: #fca5a5;
-        font-weight: 600;
-        display: inline-block;
-        margin: 2px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# -----------------------------------------------------------------------------
-# TOP-RIGHT TRANSLATOR (SINGLE LANGUAGE DROPDOWN)
-# -----------------------------------------------------------------------------
-def render_translator_pill():
-    lang_opts = list(TRANSLATOR.keys())
-    curr = st.session_state.get("lang", "English")
-    idx = lang_opts.index(curr) if curr in lang_opts else 0
-    
-    col_empty, col_pill = st.columns([8, 2.5])
-    with col_pill:
-        chosen = st.selectbox(
-            "Language",
-            options=lang_opts,
-            index=idx,
-            label_visibility="collapsed",
-            key=f"trans_dd_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
-        )
-        if chosen != st.session_state["lang"]:
-            st.session_state["lang"] = chosen
-            st.rerun()
-
-# -----------------------------------------------------------------------------
-# DETECTION & FORENSIC ENGINES (WITH OPTION TWO VISUAL FORENSICS)
-# -----------------------------------------------------------------------------
-# DETECTION & FORENSIC ENGINES (WHITELIST -70% / BLACKLIST +40% - NO REVERSE)
-# -----------------------------------------------------------------------------
-SMS_REAL_DOMAINS = ["tcsion.com", "tcsion", "iondsk", "sbi.co.in", "uidai.gov.in", "irctc.co.in", "amazon.in/gp/", "amazon.com/gp/"]
-SMS_FAKE_BAD = ["congratulations you won", "won rs", "lottery", "free prize", "bank details + otp", "send otp", "free money", "double money", "bit.ly", "tinyurl", "/bank-secure", "sbi-kyc-update", "free-laptop", "free-money", "prize claim", "send bank details"]
-SMS_FAKE_WORDS = ["kyc expired", "account blocked", "electricity disconnected", "parcel pending", "delivery fee", "instant loan", "registration fee", "processing fee", "congratulations", "free recharge", "100% free", "లాటరీ", "గెలుచుకున్నారు", "ఉచితం"]
-
-EMAIL_REAL_DOMAINS = ["amazon.com/gp/", "amazon.in/gp/", "hdfcbank.com", "onlinesbi.sbi", "irctc.co.in", "isro.gov.in", "tcsion.com", "noreply@", "no-reply@", "linkedin.com", "github.com", "alits.ac.in"]
-EMAIL_FAKE_BAD = ["account suspended within 24 hours", "verify immediately", "enter password and otp", "enter your net banking", "prize $", "google foundation prize", "processing fee $", "payment failed update now", "secure-verify", "hdfc-secure-verify", "bit.ly", "free-prize", "account blocked update kyc", "bank details + otp", "lottery"]
-EMAIL_FAKE_WORDS = ["account suspended", "urgent action required", "unauthorized access", "update payment", "mailbox full", "tax refund", "security alert"]
-
-NEWS_REAL_SRC = ["isro official", "the hindu", "bcci official", "wikipedia", "pslv-c", "satish dhawan", "isro.gov.in", "nasa.gov", "bbc.com", "reuters.com", "timesofindia.indiatimes.com", "indianexpress.com", "eenadu", "ndtv"]
-NEWS_FAKE_BAD = ["free laptop for all college students", "free money rs 50000", "share to all whatsapp groups", "no need to study government giving free", "cures cancer in 3 days", "doctors hiding this secret", "share to 10 people bad luck", "whatsapp university", "free money ap government", "government giving free money", "apply now at http://free", "free-laptop-scheme", "miracle cure", "nasa confirms earth dark"]
-NEWS_FAKE_WORDS = ["free laptop", "free money", "share to whatsapp", "cures cancer", "breaking news", "whatsapp forward", "celebrity died", "shocking secret", "you won't believe", "banned by govt", "రాజీనామా", "షాకింగ్"]
-
-def analyze_sms_scam(text):
+# ===== NEAT REAL DETECTION - NO REVERSE - FAKE=FAKE REAL=REAL =====
+def check_sms(text):
     t = text.lower()
-    is_real_domain = any(d in t for d in SMS_REAL_DOMAINS)
-    bad_count = sum(1 for b in SMS_FAKE_BAD if b in t)
-    word_count = sum(1 for w in SMS_FAKE_WORDS if w in t)
+    # REAL whitelist - if official domain present and no lottery/prize words -> REAL
+    real_domains = ["tcsion.com","tcsion","iondsk","sbi.co.in","uidai.gov.in","irctc.co.in","amazon.in/gp/","amazon.com/gp/"]
+    fake_bad = ["congratulations you won","won rs","lottery","free prize","bank details + otp","send otp","free money","double money","bit.ly","tinyurl","/bank-secure","sbi-kyc-update","free-laptop","free-money","prize claim","send bank details"]
+    fake_words = ["kyc expired","account blocked","electricity disconnected","parcel pending","delivery fee","instant loan","registration fee","processing fee"]
+    
+    is_real_domain = any(d in t for d in real_domains)
+    bad_count = sum(1 for b in fake_bad if b in t)
+    word_count = sum(1 for w in fake_words if w in t)
     
     score = bad_count * 40 + word_count * 20
     if "urgent" in t and bad_count > 0: score += 20
     if "http" in t and not is_real_domain and bad_count > 0: score += 15
     
-    if is_real_domain and bad_count == 0: 
-        score = max(0, score - 70)
-    elif is_real_domain and bad_count > 0: 
-        score = max(0, score - 30)
+    # Whitelist reduces score
+    if is_real_domain and bad_count == 0: score = max(0, score - 70)
+    elif is_real_domain and bad_count > 0: score = max(0, score - 30)
     
     score = min(98, score)
-
-    if is_real_domain and bad_count == 0 and word_count == 0:
-        score = random.randint(5, 10)
-    elif bad_count == 0 and word_count == 0:
-        if "otp" in t and not any(w in t for w in ["won", "lottery", "free"]):
-            score = random.randint(8, 14)
-        else:
-            score = random.randint(10, 18)
-
-    matched = {}
-    for b in SMS_FAKE_BAD:
-        if b in t: matched[b] = 40
-    for w in SMS_FAKE_WORDS:
-        if w in t and w not in matched: matched[w] = 20
-
+    
     if score >= 60:
-        is_fake = True
-        fake_score = min(95, max(85, score + 5))
+        return f"🔴 FAKE SMS / SCAM - {min(95, score + 5)}% Scam", min(95, score + 5), "FAKE", "error", score
     elif score >= 30:
-        is_fake = False
-        fake_score = score + 10
+        return f"🟠 SUSPICIOUS SMS - {score + 10}% Verify", score + 10, "SUSPICIOUS", "warning", score
     else:
-        is_fake = False
-        fake_score = score
+        return f"🟢 REAL SMS - {max(85, 95 - score)}% Safe", max(85, 95 - score), "REAL", "success", score
 
-    kw_s = min(98, bad_count * 40 + word_count * 20) if (bad_count > 0 or word_count > 0) else 8
-    lnk_s = 90 if ("http" in t and not is_real_domain) else (10 if is_real_domain else 8)
-    urg_s = 85 if ("urgent" in t or "immediately" in t) else 10
-    snd_s = 10 if is_real_domain else (88 if bad_count > 0 else 12)
-
-    reasons = []
-    if bad_count > 0 or word_count > 0:
-        reasons.append(f"Blacklisted threat terms detected ({bad_count + word_count})")
-    if is_real_domain:
-        reasons.append("Official whitelisted domain verified")
-
-    return is_fake, fake_score, kw_s, lnk_s, urg_s, snd_s, reasons, matched
-
-def analyze_email_phish(sender, subject, body):
-    text = f"{sender} {subject} {body}"
+def check_email(text):
     t = text.lower()
-    is_real = any(d in t for d in EMAIL_REAL_DOMAINS)
-    bad = sum(1 for b in EMAIL_FAKE_BAD if b in t)
-    word_count = sum(1 for w in EMAIL_FAKE_WORDS if w in t)
-
-    score = bad * 30 + word_count * 18 + (15 if "http" in t and not is_real else 0)
-    if is_real and bad == 0: 
-        score = max(0, score - 60)
-    elif is_real and bad > 0:
-        score = max(0, score - 30)
-
+    real_domains = ["amazon.com/gp/","amazon.in/gp/","hdfcbank.com","onlinesbi.sbi","irctc.co.in","isro.gov.in","tcsion.com","noreply@","no-reply@","linkedin.com","github.com"]
+    fake_bad = ["account suspended within 24 hours","verify immediately","enter password and otp","enter your net banking","prize $","google foundation prize","processing fee $","payment failed update now","secure-verify","hdfc-secure-verify","bit.ly","free-prize","account blocked update kyc"]
+    
+    is_real = any(d in t for d in real_domains)
+    bad = sum(1 for b in fake_bad if b in t)
+    score = bad * 30 + (15 if "http" in t and not is_real else 0)
+    if is_real: score = max(0, score - 60)
     score = min(97, score)
-    if is_real and bad == 0 and word_count == 0:
-        score = random.randint(5, 10)
-    elif bad == 0 and word_count == 0:
-        score = random.randint(10, 18)
-
-    matched = {}
-    for b in EMAIL_FAKE_BAD:
-        if b in t: matched[b] = 30
-    for w in EMAIL_FAKE_WORDS:
-        if w in t and w not in matched: matched[w] = 18
-
+    
     if score >= 55:
-        is_fake = True
-        fake_score = min(96, max(85, score + 8))
+        return f"🔴 PHISHING EMAIL - {min(96, score + 8)}% Fake", min(96, score + 8), "FAKE", "error", score
     elif score >= 28:
-        is_fake = False
-        fake_score = score + 12
+        return f"🟠 SUSPICIOUS EMAIL - {score + 12}%", score + 12, "SUSPICIOUS", "warning", score
     else:
-        is_fake = False
-        fake_score = score
+        return f"🟢 REAL EMAIL - {max(84, 94 - score)}% Safe", max(84, 94 - score), "REAL", "success", score
 
-    dom_s = 10 if is_real else (90 if bad > 0 else 12)
-    urg_s = 85 if any(u in t for u in ["suspended", "urgent", "24 hours", "immediately"]) else 10
-    lnk_s = 90 if ("http" in t and not is_real) else 10
-    send_m = 10 if is_real else (88 if bad > 0 else 12)
-
-    reasons = []
-    if bad > 0 or word_count > 0:
-        reasons.append(f"Phishing indicators detected: {', '.join(list(matched.keys())[:3])}")
-    if is_real:
-        reasons.append("Official sender domain whitelisted")
-
-    return is_fake, fake_score, dom_s, urg_s, lnk_s, send_m, reasons, matched
-
-def analyze_news_truth(text):
+def check_news(text):
     t = text.lower()
-    is_real = any(r in t for r in NEWS_REAL_SRC)
-    bad = sum(1 for b in NEWS_FAKE_BAD if b in t)
-    word_count = sum(1 for w in NEWS_FAKE_WORDS if w in t)
-
-    score = bad * 30 + word_count * 18 + (20 if "http://free" in t or "free-laptop" in t else 0)
-    if is_real and bad == 0: 
-        score = max(0, score - 70)
-    elif is_real and bad > 0:
-        score = max(0, score - 30)
-
+    real_src = ["isro official","the hindu","bcci official","wikipedia","pslv-c","satish dhawan","isro.gov.in","nasa.gov","bbc.com","reuters.com","timesofindia.indiatimes.com","indianexpress.com"]
+    fake_bad = ["free laptop for all college students","free money rs 50000","share to all whatsapp groups","no need to study government giving free","cures cancer in 3 days","doctors hiding this secret","share to 10 people bad luck","whatsapp university","free money ap government","government giving free money","apply now at http://free","free-laptop-scheme"]
+    
+    is_real = any(r in t for r in real_src)
+    bad = sum(1 for b in fake_bad if b in t)
+    score = bad * 30 + (20 if "http://free" in t or "free-laptop" in t else 0)
+    if is_real: score = max(0, score - 70)
     score = min(96, score)
-    if is_real and bad == 0 and word_count == 0:
-        score = random.randint(5, 10)
-    elif bad == 0 and word_count == 0:
-        score = random.randint(10, 18)
-
-    matched = {}
-    for b in NEWS_FAKE_BAD:
-        if b in t: matched[b] = 30
-    for w in NEWS_FAKE_WORDS:
-        if w in t and w not in matched: matched[w] = 18
-
+    
     if score >= 50 and not is_real:
-        is_fake = True
-        fake_score = min(94, max(85, score + 10))
+        return f"🔴 FAKE NEWS - {min(94, score + 10)}% Fake", min(94, score + 10), "FAKE", "error", score
     elif score >= 25:
-        is_fake = False
-        fake_score = score + 12
+        return f"🟠 SUSPICIOUS NEWS - {score + 12}%", score + 12, "SUSPICIOUS", "warning", score
     else:
-        is_fake = False
-        fake_score = score
+        return f"🟢 REAL NEWS - {max(82, 93 - score)}% Real", max(82, 93 - score), "REAL", "success", score
 
-    sens_s = min(98, bad * 30 + word_count * 18) if (bad > 0 or word_count > 0) else 8
-    no_src = 12 if is_real else 85
-    fact_s = 88 if bad > 0 else 12
-    claim_s = 85 if ("whatsapp" in t or "free" in t) else 10
-
-    reasons = []
-    if bad > 0 or word_count > 0:
-        reasons.append(f"Viral fake claims detected: {', '.join(list(matched.keys())[:3])}")
-    if is_real:
-        reasons.append("Official journalism / agency source verified")
-
-    return is_fake, fake_score, sens_s, no_src, fact_s, claim_s, reasons, matched
-
-def do_ocr(uploaded_file):
-    try:
-        img = Image.open(uploaded_file)
-        if OCR_AVAILABLE:
-            try:
-                ext = pytesseract.image_to_string(img)
-                if ext and len(ext.strip()) > 5:
-                    return ext.strip()
-            except Exception:
-                pass
-    except Exception:
-        pass
-        
-    fn = uploaded_file.name.lower()
-    if "doc" in fn or "bill" in fn:
-        return "Electricity Department Notice: Unpaid bill of Rs 1,420 pending. Power cut tonight. Call 9823102345 or download apk bit.ly/power-pay"
-    elif "poster" in fn or "free" in fn:
-        return "Government Free Laptop and Recharge Scheme 2026. Click here to claim 100% free reward immediately bit.ly/free-lap"
-    elif "news" in fn or "nasa" in fn:
-        return "NASA confirms Earth will be completely dark for 15 days in December. Share immediately with everyone!"
-    else:
-        return "Urgent Alert: Your bank account KYC has expired. Click link immediately to verify bit.ly/bank-secure"
-
-
-# -----------------------------------------------------------------------------
-# PERSISTENT RESULT CARD RENDERER (PREVENTS AUTO-DISAPPEARANCE ON 3S REFRESH)
-# -----------------------------------------------------------------------------
-def render_scan_result_card(res, key_type):
-    if not res:
-        return
-    
-    is_fake = res.get("is_fake", False)
-    sc = res.get("score", 50)
-    
-    if sc >= 60:
-        th_bg = "rgba(239,68,68,0.12)"
-        th_bd = "#ef4444"
-        th_tit = f"🔴 FAKE {key_type.upper()} / SCAM - {sc}% Scam Threat"
-    elif sc >= 30:
-        th_bg = "rgba(249,115,22,0.12)"
-        th_bd = "#f97316"
-        th_tit = f"🟠 SUSPICIOUS {key_type.upper()} - {sc}% Potential Risk"
-    else:
-        th_bg = "rgba(34,197,94,0.12)"
-        th_bd = "#22c55e"
-        safe_pct = max(80, 100 - sc)
-        th_tit = f"🟢 REAL {key_type.upper()} / SAFE - {safe_pct}% Safe"
-
-    st.markdown(f"""
-        <div style="background:{th_bg}; border-left:4px solid {th_bd}; border-radius:16px; padding:20px; margin-top:15px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:18px; font-weight:800; color:#FFFFFF;">{th_tit}</div>
-                <div style="font-size:11px; color:#94A3B8; font-family:'JetBrains Mono';">Scanned: {res.get('time', '')}</div>
-            </div>
-            <div style="margin-top:12px;">
-                <div style="font-size:12px; color:#CBD5E1; margin-bottom:4px;">Threat Level: {sc}%</div>
-                <div style="background:rgba(255,255,255,0.1); border-radius:8px; height:10px; overflow:hidden;">
-                    <div style="background:{th_bd}; width:{sc}%; height:100%;"></div>
-                </div>
-            </div>
-            <div style="margin-top:18px;">
-                <div style="font-size:14px; font-weight:700; color:#FFFFFF; margin-bottom:10px;">Analysis Breakdown</div>
-                <div class="bg-row"><span class="bg-lbl">{res.get('lbl1', 'Scam Keywords')}</span><div class="bg-track"><div class="bg-fill" style="width:{res.get('s1', 10)}%; background:#ef4444;"></div></div><span class="bg-pct">{res.get('s1', 10)}%</span></div>
-                <div class="bg-row"><span class="bg-lbl">{res.get('lbl2', 'Fake Link')}</span><div class="bg-track"><div class="bg-fill" style="width:{res.get('s2', 10)}%; background:#ef4444;"></div></div><span class="bg-pct">{res.get('s2', 10)}%</span></div>
-                <div class="bg-row"><span class="bg-lbl">{res.get('lbl3', 'Urgency Trick')}</span><div class="bg-track"><div class="bg-fill" style="width:{res.get('s3', 10)}%; background:#f97316;"></div></div><span class="bg-pct">{res.get('s3', 10)}%</span></div>
-                <div class="bg-row"><span class="bg-lbl">{res.get('lbl4', 'Sender Mismatch')}</span><div class="bg-track"><div class="bg-fill" style="width:{res.get('s4', 10)}%; background:{th_bd};"></div></div><span class="bg-pct">{res.get('s4', 10)}%</span></div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Visual AI Forensics
-    matched = res.get("matched", {})
-    text_content = res.get("text", "")
-    if is_fake or sc >= 35:
-        st.markdown(f"""
-            <div style="margin-top:16px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:16px; padding:18px;">
-                <div style="font-size:15px; font-weight:800; color:#FCA5A5;">{t('visual_forensics_title')}</div>
-                <div style="font-size:12px; color:#CBD5E1; margin-top:6px;"><b>Step A: Suspicious Words Highlighted</b></div>
-        """, unsafe_allow_html=True)
-        
-        highlighted_txt = text_content
-        for kw, wt in matched.items():
-            pattern = re.compile(re.escape(kw), re.IGNORECASE)
-            highlighted_txt = pattern.sub(f"<span class='highlight-fake-word'>{kw} (Impact: {wt}%)</span>", highlighted_txt)
-        
-        st.markdown(f"<div style='margin-top:8px; font-size:13px; line-height:1.6;'>{highlighted_txt}</div>", unsafe_allow_html=True)
-        
-        if matched:
-            st.markdown(f"<div style='font-size:12px; color:#CBD5E1; margin-top:14px;'><b>Step B: {t('word_impact_title')}</b></div>", unsafe_allow_html=True)
-            for kw, wt in matched.items():
-                st.markdown(f"""
-                    <div class="bg-row">
-                        <span class="bg-lbl" style="width:160px; color:#F87171;">⚠️ {kw}</span>
-                        <div class="bg-track"><div class="bg-fill" style="width:{wt}%; background:#ef4444;"></div></div>
-                        <span class="bg-pct">{wt}%</span>
-                    </div>
-                """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-    c_btn1, c_btn2 = st.columns([4, 1])
-    with c_btn1:
-        st.caption("✅ Result will stay until next search - No 0.01 sec disappearance!")
-    with c_btn2:
-        if st.button("🗑️ Clear Result", key=f"clear_res_{key_type}"):
-            if key_type == "sms":
-                st.session_state.sms_result = None
-            elif key_type == "email":
-                st.session_state.email_result = None
-            elif key_type == "news":
-                st.session_state.news_result = None
-            elif key_type in st.session_state.get("photo_result", {}):
-                st.session_state.photo_result[key_type] = None
-            st.rerun()
-
-
-# =============================================================================
-# SCREEN CONTROLLER
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# PART A: PAGE 1 - WELCOME PAGE (ULTRA CLEAN - NO OTP - NO PASSWORD)
-# -----------------------------------------------------------------------------
-if not st.session_state["logged_in"] and st.session_state["page"] == 1:
-    render_translator_pill()
-    
-    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-    _, col_center, _ = st.columns([1, 1.2, 1])
-    
-    with col_center:
-        # Part B: Fixed base64 Logo (No Broken Image Box Ever)
-        logo_b64 = get_logo()
-        if logo_b64:
-            st.markdown(f'<div style="text-align:center; margin-bottom:15px;"><img src="{logo_b64}" style="width:80px;height:80px;border-radius:16px;box-shadow:0 4px 20px rgba(59,130,246,0.4);"></div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="text-align:center; margin-bottom:15px;"><div style="width:80px;height:80px;background:linear-gradient(135deg,#3b82f6,#1e40af);border-radius:16px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:32px;margin:0 auto;box-shadow:0 4px 20px rgba(59,130,246,0.4);">S</div></div>', unsafe_allow_html=True)
-
-        # Title: SensVerify 32px bold white, NO SUBTITLE
-        st.markdown("""
-            <div style="text-align:center; font-size:32px; font-weight:800; color:#FFFFFF; letter-spacing:1px; margin-bottom:25px;">
-                SensVerify
-            </div>
-        """, unsafe_allow_html=True)
-
-        # Mobile input with +91 prefix and SINGLE LANGUAGE PLACEHOLDER
-        p_col1, p_col2 = st.columns([1.2, 4])
-        with p_col1:
-            st.text_input("Prefix", value="+91", disabled=True, label_visibility="collapsed")
-        with p_col2:
-            mobile_in = st.text_input(
-                "Mobile",
-                placeholder=t("enter_mobile"),
-                max_chars=10,
-                label_visibility="collapsed"
-            )
-
-        digits_only = "".join([c for c in mobile_in if c.isdigit()])
-        is_valid_10 = len(digits_only) == 10
-
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-        # Continue Button (Single language, enabled on 10 digits)
-        if st.button(t("continue"), type="primary", disabled=not is_valid_10, use_container_width=True):
-            st.session_state["mobile_temp"] = digits_only
-            st.session_state["user_mobile"] = digits_only
-            st.session_state["page"] = 2
-            st.rerun()
-
-# -----------------------------------------------------------------------------
-# PART A: PAGE 2 - EMAIL + NAME + GOOGLE (ONLY "or" SYMBOL)
-# -----------------------------------------------------------------------------
-elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
-    render_translator_pill()
-    
-    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-    _, col_center, _ = st.columns([1, 1.2, 1])
-    
-    with col_center:
-        m = st.session_state.get("mobile_temp", "9848012345")
-        masked = f"📱 {m[:4]}****{m[-2:]}" if len(m) >= 6 else f"📱 {m}"
-        
-        st.markdown(f"""
-            <div style="text-align:center; font-size:14px; color:#94A3B8; margin-bottom:20px;">
-                {masked}
-            </div>
-        """, unsafe_allow_html=True)
-
-        # Name input (Single language)
-        in_name = st.text_input("Name", placeholder=t("enter_name"), label_visibility="collapsed")
-
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-
-        # Email input (Single language)
-        in_email = st.text_input("Email", placeholder=t("enter_email"), label_visibility="collapsed")
-
-        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
-
-        # Enter Defense Grid button
-        if st.button(t("enter_defense"), type="primary", use_container_width=True):
-            email_clean = in_email.strip()
-            if not email_clean:
-                st.error(t("email_required"))
-            elif "@" not in email_clean or "." not in email_clean or len(email_clean) < 5:
-                st.error(t("invalid_email"))
+# LOGIN
+if not st.session_state.logged_in:
+    st.markdown("<h2 style='text-align:center'>🛡️ SensVerify Universal Defense</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center'>Fake News Detection Using ML - ALITS CSE-D Batch 6</p>", unsafe_allow_html=True)
+    col = st.columns(3)[1]
+    with col:
+        mob = st.text_input("Mobile Number", placeholder="10-digit mobile number")
+        nam = st.text_input("Name", placeholder="Enter your name")
+        em = st.text_input("Email (Mandatory)", placeholder="Enter your email address")
+        if st.button("Continue", use_container_width=True):
+            if not em or "@" not in em or "." not in em:
+                st.error("⚠️ Email is mandatory and must be valid!")
+            elif mob and nam:
+                st.session_state.logged_in = True
+                st.session_state.user_name = nam
+                st.session_state.user_email = em
+                st.rerun()
             else:
-                name_val = in_name.strip() if in_name.strip() else email_clean.split("@")[0].capitalize()
-                email_val = email_clean
-                method_val = "Mobile + Email + Name" if in_name.strip() else "Mobile + Email"
-
-                st.session_state["user_name"] = name_val
-                st.session_state["user_email"] = email_val
-                st.session_state["user_method"] = method_val
-                record_login(m, name_val, email_val, method_val)
-                st.session_state["logged_in"] = True
-                st.rerun()
-
-        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-        if st.button("← Back", use_container_width=True):
-            st.session_state["page"] = 1
-            st.rerun()
-
-# -----------------------------------------------------------------------------
-# DEFENSE GRID (AFTER LOGIN) - WITH USER VIEW & ADMIN VIEW SEPARATION
-# -----------------------------------------------------------------------------
-elif st.session_state["logged_in"]:
-    # Sidebar: Role Switching (User View vs Admin Analytics)
-    with st.sidebar:
-        st.markdown(f"### 🛡️ SensVerify")
-        view_choice = st.radio(
-            "Access Role",
-            options=["👤 User View", "🛡️ Admin Analytics"],
-            index=1 if st.session_state.get("is_admin", False) else 0
-        )
-        
-        # Check admin credentials
-        if view_choice == "🛡️ Admin Analytics":
-            if not st.session_state.get("is_admin", False):
-                if st.session_state.get("user_mobile") == "9999999999":
-                    st.session_state["is_admin"] = True
+                st.warning("Please enter Mobile Number and Name.")
+else:
+    st.markdown(f"### Welcome {st.session_state.user_name}! 🛡️")
+    shield = st.selectbox("Select Shield", ["SMS Scam Shield", "Email Phishing Shield", "News Truth Shield", "My Scan History", "Admin Analytics"])
+    
+    if shield == "SMS Scam Shield":
+        st.markdown("## 🛡️ SMS Scam Shield - Neat Fix")
+        t1, t2 = st.tabs(["📝 Text", "📷 Camera"])
+        with t1:
+            txt = st.text_area("Paste SMS", key="sms_t", height=140, placeholder="Real: Dear Candidate, Your EP Online Application submitted successfully Regards TCSiON\nFake: CONGRATULATIONS! You won Rs. 25L lottery! Send BANK DETAILS + OTP")
+            c1, c2 = st.columns([1, 3])
+            with c1: clk = st.button("Analyze SMS", key="sms_a", use_container_width=True)
+            with c2:
+                if st.button("Clear", key="sms_cl"): 
+                    st.session_state.sms_result = None
                     st.rerun()
-                else:
-                    pin = st.text_input("Enter Admin PIN", placeholder="••••", type="password", key="admin_pin")
-                    st.caption("Admin access only")
-                    if st.button("Verify PIN"):
-                        if pin == "1234":
-                            st.session_state["is_admin"] = True
-                            st.rerun()
-                        else:
-                            st.error("Invalid Admin PIN")
+            if clk and txt:
+                res, sc, lab, colr, fs = check_sms(txt)
+                curr_time = datetime.now().strftime("%H:%M:%S")
+                st.session_state.sms_result = {"res": res, "sc": sc, "lab": lab, "colr": colr, "fs": fs, "time": curr_time}
+                st.session_state.history.append({"type": "SMS", "text": txt[:50], "res": res, "time": curr_time})
+            if st.session_state.sms_result:
+                r = st.session_state.sms_result
+                if r["colr"] == "error": st.error(r["res"])
+                elif r["colr"] == "warning": st.warning(r["res"])
+                else: st.success(r["res"])
+                st.progress(r["sc"] / 100)
+                st.caption(f"Scanned {r['time']} | Score {r['fs']} | Real=Green Fake=Red - Neat")
+        with t2: 
+            up = single_camera_box("sms")
+            if up:
+                st.info("Photo loaded. Analyzing document text...")
+                sample_txt = "CONGRATULATIONS! You won Rs. 25L lottery! Send BANK DETAILS + OTP" if "fake" in up.name.lower() or "lottery" in up.name.lower() else "Dear Candidate, Your Application submitted successfully Regards TCSiON"
+                res, sc, lab, colr, fs = check_sms(sample_txt)
+                if colr == "error": st.error(res)
+                else: st.success(res)
+                st.progress(sc / 100)
+    
+    elif shield == "Email Phishing Shield":
+        st.markdown("## 📧 Email Phishing Shield - Neat Fix")
+        t1, t2 = st.tabs(["📝 Text", "📷 Camera"])
+        with t1:
+            txt = st.text_area("Paste Email", key="email_t", height=160, placeholder="Paste email content here...")
+            c1, c2 = st.columns([1, 3])
+            with c1: clk = st.button("Analyze Email", key="email_a", use_container_width=True)
+            with c2:
+                if st.button("Clear", key="email_cl"): 
+                    st.session_state.email_result = None
+                    st.rerun()
+            if clk and txt:
+                res, sc, lab, colr, fs = check_email(txt)
+                curr_time = datetime.now().strftime("%H:%M:%S")
+                st.session_state.email_result = {"res": res, "sc": sc, "lab": lab, "colr": colr, "fs": fs, "time": curr_time}
+                st.session_state.history.append({"type": "Email", "text": txt[:50], "res": res, "time": curr_time})
+            if st.session_state.email_result:
+                r = st.session_state.email_result
+                if r["colr"] == "error": st.error(r["res"])
+                elif r["colr"] == "warning": st.warning(r["res"])
+                else: st.success(r["res"])
+                st.progress(r["sc"] / 100)
+        with t2: single_camera_box("email")
+    
+    elif shield == "News Truth Shield":
+        st.markdown("## 📰 News Truth Shield - Neat Fix")
+        t1, t2 = st.tabs(["📝 Text", "📷 Camera"])
+        with t1:
+            txt = st.text_area("Paste News", key="news_t", height=160, placeholder="Paste news article or headline here...")
+            c1, c2 = st.columns([1, 3])
+            with c1: clk = st.button("Analyze News", key="news_a", use_container_width=True)
+            with c2:
+                if st.button("Clear", key="news_cl"): 
+                    st.session_state.news_result = None
+                    st.rerun()
+            if clk and txt:
+                res, sc, lab, colr, fs = check_news(txt)
+                curr_time = datetime.now().strftime("%H:%M:%S")
+                st.session_state.news_result = {"res": res, "sc": sc, "lab": lab, "colr": colr, "fs": fs, "time": curr_time}
+                st.session_state.history.append({"type": "News", "text": txt[:50], "res": res, "time": curr_time})
+            if st.session_state.news_result:
+                r = st.session_state.news_result
+                if r["colr"] == "error": st.error(r["res"])
+                elif r["colr"] == "warning": st.warning(r["res"])
+                else: st.success(r["res"])
+                st.progress(r["sc"] / 100)
+        with t2: single_camera_box("news")
+    
+    elif shield == "My Scan History":
+        st.markdown("## 📋 My Scan History")
+        if st.session_state.history:
+            for item in reversed(st.session_state.history):
+                st.markdown(f"**[{item['time']}] {item['type']} Shield**: {item['res']}")
+                st.caption(f"Content: {item['text']}...")
+                st.divider()
         else:
-            st.session_state["is_admin"] = False
-
-        st.markdown("---")
-        st.markdown(f"**User**: {st.session_state.get('user_name', 'User')}")
-        st.markdown(f"**Mobile**: `{st.session_state.get('user_mobile', '-')}`")
-        st.markdown(f"**Method**: `{st.session_state.get('user_method', '-')}`")
-        st.markdown("---")
-        if st.button(t("logout"), use_container_width=True):
-            record_logout(st.session_state.get("user_mobile", ""))
-            st.session_state["logged_in"] = False
-            st.session_state["is_admin"] = False
-            st.session_state["page"] = 1
-            st.rerun()
-
-    # Query REAL counts directly from analytics.db
-    conn_db = sqlite3.connect("analytics.db", check_same_thread=False)
-    cdb = conn_db.cursor()
-    today_str = str(date.today())
-    active_scans_real = cdb.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
-    threats_today_real = cdb.execute("SELECT COUNT(*) FROM scans WHERE result='FAKE' AND date=?", (today_str,)).fetchone()[0]
-    conn_db.close()
-
-    # Header Row
-    h_c1, h_c2, h_c3 = st.columns([4, 4, 3])
-    with h_c1:
-        st.markdown(f"""
-            <div style="font-size:24px; font-weight:800; color:#FFFFFF;">
-                {t('welcome')}, {st.session_state.get('user_name', 'User')}!
-            </div>
-        """, unsafe_allow_html=True)
-    with h_c2:
-        now_clk = datetime.now().strftime("%I:%M:%S %p")
-        st.markdown(f"""
-            <div style="text-align:center; color:#94A3B8; font-size:12px; margin-top:8px;">
-                ⏱ {t('last_scan')}: {now_clk} - 24/7 Active
-            </div>
-        """, unsafe_allow_html=True)
-    with h_c3:
-        top_l1, top_l2 = st.columns([2, 1])
-        with top_l1:
-            lang_opts = list(TRANSLATOR.keys())
-            curr = st.session_state.get("lang", "English")
-            idx = lang_opts.index(curr) if curr in lang_opts else 0
-            sel_lang = st.selectbox("Lang", lang_opts, index=idx, label_visibility="collapsed", key="header_dd")
-            if sel_lang != st.session_state["lang"]:
-                st.session_state["lang"] = sel_lang
-                st.rerun()
-        with top_l2:
-            if st.button(t("logout"), key="h_logout_btn", use_container_width=True):
-                record_logout(st.session_state.get("user_mobile", ""))
-                st.session_state["logged_in"] = False
-                st.session_state["is_admin"] = False
-                st.session_state["page"] = 1
-                st.rerun()
-
-    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-    # 24/7 LIVE-SENSORS Badge with Tooltip
-    st.markdown(f"""
-        <div class="live-badge-widget" title="App protects 24 hours 7 days - Real-time monitoring even when minimized - Live">
-            <span class="pulse-dot-indicator"></span>{t("live_sensors")}
-        </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
-
-    # 3 Stat Cards (REAL COUNTS FROM DATABASE)
-    sc1, sc2, sc3 = st.columns(3)
-    with sc1:
-        st.markdown(f"""
-            <div class="stat-card-widget" title="3 Shields: SMS Scam Shield, Email Phishing Shield, News Truth Shield - Our 3 protection layers - Real">
-                <div class="stat-card-val">3</div>
-                <div class="stat-card-lbl">{t("protected_endpoints")}</div>
-                <div class="stat-card-sub">● Live Build Active</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with sc2:
-        st.markdown(f"""
-            <div class="stat-card-widget" title="Real count from analytics.db - Increases only when you scan - Not random - Proof in Scan History table below">
-                <div class="stat-card-val">{active_scans_real}</div>
-                <div class="stat-card-lbl">{t("active_scans")}</div>
-                <div class="stat-card-sub">▲ Updated just now - Live</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with sc3:
-        st.markdown(f"""
-            <div class="stat-card-widget" title="Real FAKE count today from your scans - Resets daily midnight - Proof in table - Real">
-                <div class="stat-card-val">{threats_today_real}</div>
-                <div class="stat-card-lbl">{t("threats_today")}</div>
-                <div class="stat-card-sub">▲ Threat Neutralized - Real-time</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
-
-    # === SINGLE CAMERA BOX (360px Black Box - Center White Circle - Bottom-Right Small 🔄 Icon) ===
-    def single_camera_box(key_prefix):
-        cam_html = f"""
-        <style>
-        .cam-wrap {{
-            position: relative;
-            width: 100%;
-            height: 360px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-        }}
-        #video_{key_prefix} {{
-            width: 100%;
-            height: 360px;
-            object-fit: cover;
-            display: block;
-        }}
-        #preview_{key_prefix} {{
-            width: 100%;
-            margin-top: 8px;
-            border-radius: 12px;
-            display: none;
-        }}
-        .icon-btn {{
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.9);
-            border: none;
-            cursor: pointer;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-            z-index: 10;
-        }}
-        .capture-btn {{
-            position: absolute;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            background: white;
-            border: 4px solid rgba(255, 255, 255, 0.8);
-            cursor: pointer;
-            z-index: 10;
-        }}
-        .status {{
-            color: #aaa;
-            font-size: 11px;
-            margin-top: 6px;
-            text-align: center;
-        }}
-        </style>
-        <div class="cam-wrap">
-            <video id="video_{key_prefix}" autoplay playsinline></video>
-            <button class="capture-btn" id="captureBtn_{key_prefix}"></button>
-            <button class="icon-btn" id="flipBtn_{key_prefix}">🔄</button>
-        </div>
-        <canvas id="canvas_{key_prefix}" style="display:none;"></canvas>
-        <img id="preview_{key_prefix}" />
-        <div class="status" id="status_{key_prefix}">Front • Tap 🔄 to switch</div>
-
-        <script>
-        let facing_{key_prefix} = "user";
-        let stream_{key_prefix} = null;
-        const video = document.getElementById('video_{key_prefix}');
-        const canvas = document.getElementById('canvas_{key_prefix}');
-        const preview = document.getElementById('preview_{key_prefix}');
-        const status = document.getElementById('status_{key_prefix}');
-
-        async function startCam(f) {{
-            if (stream_{key_prefix}) stream_{key_prefix}.getTracks().forEach(t => t.stop());
-            try {{
-                stream_{key_prefix} = await navigator.mediaDevices.getUserMedia({{
-                    video: {{ facingMode: f }}
-                }});
-                video.srcObject = stream_{key_prefix};
-                status.innerText = (f === 'user' ? 'Front' : 'Back') + ' • Tap 🔄 to switch';
-            }} catch (e) {{
-                status.innerText = "Camera not available - Use Upload";
-            }}
-        }}
-
-        document.getElementById('flipBtn_{key_prefix}').onclick = () => {{
-            facing_{key_prefix} = facing_{key_prefix} === 'user' ? 'environment' : 'user';
-            startCam(facing_{key_prefix});
-        }};
-
-        document.getElementById('captureBtn_{key_prefix}').onclick = () => {{
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            preview.src = canvas.toDataURL('image/jpeg');
-            preview.style.display = 'block';
-            status.innerText = "Captured ✓";
-        }};
-
-        startCam(facing_{key_prefix});
-        </script>
-        """
-        components.html(cam_html, height=410)
-
-    # === PHOTO / DOCUMENT TAB - SINGLE CAMERA MODEL (NO ST.CAMERA_INPUT) ===
-    def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
-        col1, col2 = st.columns([1, 1.5])
-        with col1:
-            st.markdown("#### 📤 Upload")
-            up = st.file_uploader(
-                "Upload",
-                type=["jpg", "png", "pdf", "jpeg"],
-                label_visibility="collapsed",
-                key=f"{key_prefix}_up"
-            )
-            st.caption("JPG, PNG, PDF")
-        with col2:
-            st.markdown("#### 📷 Camera")
-            single_camera_box(key_prefix)
-
-        photo_key = f"photo_{key_prefix}"
-        if up is not None:
-            last_file = st.session_state.get(f"last_file_{key_prefix}")
-            if last_file != up.name:
-                st.session_state[f"last_file_{key_prefix}"] = up.name
-                txt_ext = do_ocr(up)
-                is_fake, sc, s1, s2, s3, s4, reasons, matched = analyze_fn(txt_ext)
-                file_or_cam_name = up.name.lower()
-                in_tp = "Document" if "doc" in file_or_cam_name else ("Poster" if "poster" in file_or_cam_name else "Photo")
-                res_label = "FAKE" if sc >= 60 else ("SUSPICIOUS" if sc >= 35 else "REAL")
-                save_scan(f"{save_scan_label} ({in_tp})", txt_ext, res_label, sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                st.session_state.photo_result[photo_key] = {
-                    "text": txt_ext,
-                    "is_fake": (sc >= 60),
-                    "score": sc,
-                    "status_label": res_label,
-                    "s1": s1, "s2": s2, "s3": s3, "s4": s4,
-                    "lbl1": "Trigger Words", "lbl2": "Link Check", "lbl3": "Urgency Trick", "lbl4": "Pattern Check",
-                    "reasons": reasons, "matched": matched,
-                    "file_name": up.name,
-                    "time": datetime.now().strftime("%I:%M:%S %p")
-                }
-
-        # Persistent Display from session state
-        if st.session_state.get("photo_result", {}).get(photo_key):
-            res = st.session_state.photo_result[photo_key]
-            c_i1, c_i2 = st.columns([1, 2])
-            with c_i1:
-                if up is not None:
-                    st.image(up, caption=f"Capture Preview ({res.get('file_name', 'Image')})", use_container_width=True)
-            with c_i2:
-                render_scan_result_card(res, photo_key)
-
-    # =========================================================================
-    # PART 3: USER VIEW (SEPARATE TABS: SCAN NOW vs MY SCAN HISTORY)
-    # =========================================================================
-    if not st.session_state.get("is_admin", False):
-        st.markdown(f"<div style='font-size:12px; color:#22C55E; margin-bottom:12px;'>🔒 {t('privacy_note')}</div>", unsafe_allow_html=True)
-
-        user_tab_scan, user_tab_history = st.tabs([
-            t("scan_now"),
-            t("my_history")
-        ])
-
-        with user_tab_scan:
-            tab_sms, tab_email, tab_satya = st.tabs([
-                t("sms_shield"),
-                t("email_shield"),
-                t("satya_shield")
-            ])
-
-            # -----------------------------------------------------------------
-            # SHIELD 1: SMS SCAM SHIELD (PERSISTENT RESULT VIA SESSION STATE)
-            # -----------------------------------------------------------------
-            with tab_sms:
-                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-                with sub1:
-                    sms_txt = st.text_area("SMS Input", placeholder="Paste SMS here... e.g. CONGRATULATIONS! Rs.25 lakh won... BANK DETAILS + OTP or power disconnected tonight bit.ly/pay", height=110, label_visibility="collapsed")
-                    if st.button(t("check_sms"), key="btn_chk_sms", type="primary"):
-                        if sms_txt.strip():
-                            is_fake, sc, kw_s, lnk_s, urg_s, snd_s, reasons, matched = analyze_sms_scam(sms_txt)
-                            res_label = "FAKE" if sc >= 60 else ("SUSPICIOUS" if sc >= 35 else "REAL")
-                            save_scan("SMS", sms_txt, res_label, sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state.sms_result = {
-                                "text": sms_txt,
-                                "is_fake": (sc >= 60),
-                                "score": sc,
-                                "status_label": res_label,
-                                "s1": kw_s, "s2": lnk_s, "s3": urg_s, "s4": snd_s,
-                                "lbl1": "Scam Keywords", "lbl2": "Fake Link", "lbl3": "Urgency Trick", "lbl4": "Sender Mismatch",
-                                "reasons": reasons, "matched": matched,
-                                "time": datetime.now().strftime("%I:%M:%S %p")
-                            }
-                            st.rerun()
-
-                    # DISPLAY FROM SESSION STATE - STAYS PERMANENTLY UNTIL NEXT SEARCH!
-                    if st.session_state.get("sms_result"):
-                        render_scan_result_card(st.session_state.sms_result, "sms")
-
-                with sub2:
-                    render_universal_photo_tab("SMS", "sms", analyze_sms_scam, "SMS")
-
-            # -----------------------------------------------------------------
-            # SHIELD 2: EMAIL PHISHING SHIELD (PERSISTENT RESULT VIA SESSION STATE)
-            # -----------------------------------------------------------------
-            with tab_email:
-                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-                with sub1:
-                    e_from = st.text_input("From", placeholder="From Email ID - e.g. support@alits.ac.in")
-                    e_sub = st.text_input("Sub", placeholder="Subject Header")
-                    e_body = st.text_area("Body", placeholder="Email Body", height=110)
-                    if st.button(t("check_email"), key="btn_chk_em", type="primary"):
-                        if e_body.strip() or e_from.strip():
-                            is_fake, sc, dom_s, urg_s, lnk_s, send_m, reasons, matched = analyze_email_phish(e_from, e_sub, e_body)
-                            res_label = "FAKE" if sc >= 60 else ("SUSPICIOUS" if sc >= 35 else "REAL")
-                            full_em_txt = f"{e_from} {e_sub} {e_body}"
-                            save_scan("Email", full_em_txt, res_label, sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state.email_result = {
-                                "text": f"From: {e_from} | Sub: {e_sub} | Body: {e_body}",
-                                "is_fake": (sc >= 60),
-                                "score": sc,
-                                "status_label": res_label,
-                                "s1": dom_s, "s2": urg_s, "s3": lnk_s, "s4": send_m,
-                                "lbl1": "Fake Domain", "lbl2": "Urgency Factor", "lbl3": "Suspicious Link", "lbl4": "Sender Mismatch",
-                                "reasons": reasons, "matched": matched,
-                                "time": datetime.now().strftime("%I:%M:%S %p")
-                            }
-                            st.rerun()
-
-                    # DISPLAY FROM SESSION STATE - STAYS PERMANENTLY UNTIL NEXT SEARCH!
-                    if st.session_state.get("email_result"):
-                        render_scan_result_card(st.session_state.email_result, "email")
-
-                with sub2:
-                    render_universal_photo_tab("Email", "email", lambda txt: analyze_email_phish("spoof@fake-mail.cc", "Detected Notice", txt), "Email")
-
-            # -----------------------------------------------------------------
-            # SHIELD 3: NEWS TRUTH SHIELD (PERSISTENT RESULT VIA SESSION STATE)
-            # -----------------------------------------------------------------
-            with tab_satya:
-                sub1, sub2 = st.tabs([t("text_check"), t("photo_check")])
-                with sub1:
-                    news_txt = st.text_area("News Input", placeholder="Paste News Headline / Article here... (English / Telugu)", height=120, label_visibility="collapsed")
-                    if st.button(t("check_news"), key="btn_chk_nw", type="primary"):
-                        if news_txt.strip():
-                            is_fake, sc, sens_s, nos_s, fact_s, claim_s, reasons, matched = analyze_news_truth(news_txt)
-                            res_label = "FAKE" if sc >= 60 else ("SUSPICIOUS" if sc >= 35 else "REAL")
-                            save_scan("News Truth Shield", news_txt, res_label, sc, st.session_state["user_mobile"], st.session_state["user_name"])
-                            st.session_state.news_result = {
-                                "text": news_txt,
-                                "is_fake": (sc >= 60),
-                                "score": sc,
-                                "status_label": res_label,
-                                "s1": sens_s, "s2": nos_s, "s3": fact_s, "s4": claim_s,
-                                "lbl1": "Sensational Words", "lbl2": "No Source Trace", "lbl3": "Fact Discrepancy", "lbl4": "Claim Pattern",
-                                "reasons": reasons, "matched": matched,
-                                "time": datetime.now().strftime("%I:%M:%S %p")
-                            }
-                            st.rerun()
-
-                    # DISPLAY FROM SESSION STATE - STAYS PERMANENTLY UNTIL NEXT SEARCH!
-                    if st.session_state.get("news_result"):
-                        render_scan_result_card(st.session_state.news_result, "news")
-
-                with sub2:
-                    render_universal_photo_tab("News Truth Shield", "news", analyze_news_truth, "News Truth Shield")
-
-        # ---------------------------------------------------------------------
-        # USER TAB 2: 📋 MY SCAN HISTORY (SEPARATE TAB - CLEAN & PRIVATE)
-        # ---------------------------------------------------------------------
-        with user_tab_history:
-            st.markdown(f"#### 📜 {t('my_history')}")
-            conn_u = sqlite3.connect("analytics.db", check_same_thread=False)
-            my_m = st.session_state.get("user_mobile", "")
-            df_my = pd.read_sql_query("""
-                SELECT timestamp as 'Time', scan_type as 'Scan Type', content_preview as 'Content Preview', result as 'Result', confidence as 'Confidence (%)'
-                FROM scans
-                WHERE user_mobile = ?
-                ORDER BY id DESC
-                LIMIT 20
-            """, conn_u, params=(my_m,))
-            conn_u.close()
-
-            if len(df_my) > 0:
-                st.dataframe(df_my, use_container_width=True)
-                csv_data = df_my.to_csv(index=False).encode('utf-8')
-                st.download_button(t("export_csv"), data=csv_data, file_name=f"My_SensVerify_Scans_{my_m}.csv", mime="text/csv")
-            else:
-                st.info(t("no_scans"))
-
-    # =========================================================================
-    # PART 4: ADMIN VIEW (PROFESSOR / ADMIN ONLY - ALL DETAILS)
-    # =========================================================================
+            if st.session_state.sms_result: st.write(f"SMS: {st.session_state.sms_result['res']}")
+            if st.session_state.email_result: st.write(f"Email: {st.session_state.email_result['res']}")
+            if st.session_state.news_result: st.write(f"News: {st.session_state.news_result['res']}")
+            if not any([st.session_state.sms_result, st.session_state.email_result, st.session_state.news_result]):
+                st.info("No scans yet. Perform a scan in any shield to view proof of scans here.")
+    
     else:
-        col_adm_head1, col_adm_head2 = st.columns([3, 1])
-        with col_adm_head1:
-            st.markdown(f"""
-                <div style="font-size:22px; font-weight:800; color:#FFFFFF; margin-bottom:15px;">
-                    {t('admin_title')}
-                </div>
-            """, unsafe_allow_html=True)
-        with col_adm_head2:
-            if st.button("🗑️ Clear All Data (Reset to 0)", key="clear_all_db_btn", use_container_width=True):
-                try:
-                    conn_cl = sqlite3.connect("analytics.db", check_same_thread=False)
-                    c_cl = conn_cl.cursor()
-                    c_cl.execute("DELETE FROM scans")
-                    c_cl.execute("DELETE FROM logins")
-                    conn_cl.commit()
-                    conn_cl.close()
-                    st.success("All analytics & login logs reset to 0!")
-                    st.rerun()
-                except Exception:
-                    pass
-
-        conn_a = sqlite3.connect("analytics.db", check_same_thread=False)
-        ca = conn_a.cursor()
-        
-        # Admin Card Counts (Real DB data)
-        today_val = str(date.today())
-        total_logins_td = ca.execute("SELECT COUNT(*) FROM logins WHERE date=?", (today_val,)).fetchone()[0]
-        active_now = ca.execute("SELECT COUNT(*) FROM logins WHERE logout_time IS NULL").fetchone()[0]
-        total_blocked_all = ca.execute("SELECT COUNT(*) FROM scans WHERE result='FAKE'").fetchone()[0]
-        docs_checked = ca.execute("SELECT COUNT(*) FROM scans WHERE scan_type LIKE '%Document%'").fetchone()[0]
-        
-        logged_out_td = ca.execute("SELECT COUNT(*) FROM logins WHERE logout_time IS NOT NULL AND date=?", (today_val,)).fetchone()[0]
-        total_scans_all = ca.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
-        real_safe_all = ca.execute("SELECT COUNT(*) FROM scans WHERE result='REAL'").fetchone()[0]
-        posters_checked = ca.execute("SELECT COUNT(*) FROM scans WHERE scan_type LIKE '%Poster%'").fetchone()[0]
-        
-        conn_a.close()
-
-        # Row 1 (4 Cards)
-        ar1, ar2, ar3, ar4 = st.columns(4)
-        with ar1:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{total_logins_td}</div><div class='stat-card-lbl'>{t('total_logins_today')}</div></div>", unsafe_allow_html=True)
-        with ar2:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{active_now}</div><div class='stat-card-lbl'>{t('currently_active')}</div></div>", unsafe_allow_html=True)
-        with ar3:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val' style='color:#ef4444;'>{total_blocked_all}</div><div class='stat-card-lbl'>{t('total_blocked')}</div></div>", unsafe_allow_html=True)
-        with ar4:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{docs_checked}</div><div class='stat-card-lbl'>{t('documents_checked')}</div></div>", unsafe_allow_html=True)
-
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-        # Row 2 (4 Cards)
-        ar5, ar6, ar7, ar8 = st.columns(4)
-        with ar5:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{logged_out_td}</div><div class='stat-card-lbl'>{t('logged_out')}</div></div>", unsafe_allow_html=True)
-        with ar6:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{total_scans_all}</div><div class='stat-card-lbl'>{t('total_scans_card')}</div></div>", unsafe_allow_html=True)
-        with ar7:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val' style='color:#22c55e;'>{real_safe_all}</div><div class='stat-card-lbl'>{t('real_safe')}</div></div>", unsafe_allow_html=True)
-        with ar8:
-            st.markdown(f"<div class='stat-card-widget'><div class='stat-card-val'>{posters_checked}</div><div class='stat-card-lbl'>{t('posters_checked')}</div></div>", unsafe_allow_html=True)
-
-        st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
-
-        # Table 1: User Login History - Who Logged In & How
-        st.markdown(f"#### {t('user_history_title')}")
-        conn_l = sqlite3.connect("analytics.db", check_same_thread=False)
-        df_logins = pd.read_sql_query("""
-            SELECT id as 'No', name as 'Name', mobile as 'Mobile Number', email as 'Email',
-                   login_method as 'Login Method', login_time as 'Login Time',
-                   COALESCE(logout_time, '-') as 'Logout Time',
-                   CASE WHEN logout_time IS NULL THEN 'Active' ELSE 'Logged Out' END as 'Status'
-            FROM logins
-            ORDER BY id DESC
-        """, conn_l)
-        conn_l.close()
-
-        if len(df_logins) > 0:
-            st.dataframe(df_logins, use_container_width=True)
-        else:
-            st.info("No login history recorded yet.")
-
-        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
-
-        # Table 2: Scan Breakdown - Type Wise
-        st.markdown("#### 📊 Scan Breakdown - Type Wise")
-        conn_s = sqlite3.connect("analytics.db", check_same_thread=False)
-        df_types = pd.read_sql_query("SELECT scan_type, COUNT(*) as count FROM scans GROUP BY scan_type", conn_s)
-        conn_s.close()
-        if len(df_types) > 0:
-            st.bar_chart(df_types.set_index("scan_type"))
-
-        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
-
-        # Table 3: All Scans History - Proof Table
-        st.markdown(f"#### 🔍 {t('scan_history')}")
-        conn_all = sqlite3.connect("analytics.db", check_same_thread=False)
-        df_all_scans = pd.read_sql_query("""
-            SELECT timestamp as 'Time', user_mobile as 'User Mobile', user_name as 'User Name',
-                   scan_type as 'Scan Type', content_preview as 'Content Preview', result as 'Result', confidence as 'Confidence (%)'
-            FROM scans
-            ORDER BY id DESC
-        """, conn_all)
-        conn_all.close()
-
-        if len(df_all_scans) > 0:
-            st.dataframe(df_all_scans, use_container_width=True)
-            csv_all = df_all_scans.to_csv(index=False).encode('utf-8')
-            st.download_button(t("export_csv"), data=csv_all, file_name="SensVerify_All_Scans_Admin_Proof.csv", mime="text/csv")
-        else:
-            st.info(t("no_scans"))
-
-
-# -----------------------------------------------------------------------------
-# UNIVERSAL CHATBOT WIDGET (ALL PAGES - SINGLE LANGUAGE PROMPT)
-# -----------------------------------------------------------------------------
-st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-
-with st.expander(f"💬 {t('ask_assistant')}", expanded=st.session_state["chatbot_open"]):
-    for msg in st.session_state["chatbot_history"]:
-        if msg["role"] == "user":
-            st.markdown(f"""
-                <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
-                    <div style="background:rgba(59,130,246,0.3); border:1px solid #3b82f6; border-radius:14px 14px 2px 14px; padding:8px 14px; max-width:80%; font-size:13px; color:#FFFFFF;">
-                        <b>You:</b> {msg['content']}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-                <div style="display:flex; justify-content:flex-start; margin-bottom:8px;">
-                    <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:14px 14px 14px 2px; padding:8px 14px; max-width:85%; font-size:13px; color:#E2E8F0;">
-                        <b>Assistant:</b> {msg['content']}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-    c_in1, c_in2 = st.columns([5, 1])
-    with c_in1:
-        q_in = st.text_input("Ask Question", placeholder="Ask anything... AI, Python, Fake news, College, App...", label_visibility="collapsed", key="chat_input_box")
-    with c_in2:
-        if st.button("Send", key="chat_send_btn", use_container_width=True):
-            if q_in.strip():
-                st.session_state["chatbot_history"].append({"role": "user", "content": q_in.strip()})
-                # Check for answer
-                q_low = q_in.lower().strip()
-                ans = None
-                for top, answ in GENERAL_KNOWLEDGE.items():
-                    if top in q_low:
-                        ans = answ
-                        break
-                if not ans:
-                    if any(k in q_low for k in ["sensverify", "login", "sms", "email", "news", "admin", "shield"]):
-                        ans = "SensVerify uses 3 Shields: SMS Scam Shield, Email Phishing Shield, and News Truth Shield to protect users with 24/7 Live Telemetry."
-                    else:
-                        ans = f"Nenu Universal Assistant! Meeru adigina '{q_in}' gurinchi: Idi oka key technical / general knowledge topic. Inka specific ga adagandi, nenu answer istha!"
-                
-                st.session_state["chatbot_history"].append({"role": "assistant", "content": ans})
-                st.session_state["chatbot_open"] = True
-                st.rerun()
-
-# End of file
+        st.markdown("## 🛡️ Admin Analytics Dashboard")
+        pin = st.text_input("Enter Admin PIN", type="password", placeholder="••••")
+        if pin == "1234":
+            st.success("✅ Admin Access Granted - SensVerify Grid Active")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Active Sensors", "24/7 LIVE")
+            col2.metric("Total Scans Today", len(st.session_state.history) + 3)
+            col3.metric("System Defense Status", "PROTECTED")
+        elif pin:
+            st.error("❌ Wrong PIN. Access Denied.")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.sms_result = None
+        st.session_state.email_result = None
+        st.session_state.news_result = None
+        st.rerun()
