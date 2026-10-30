@@ -403,178 +403,166 @@ def render_translator_pill():
 # -----------------------------------------------------------------------------
 # DETECTION & FORENSIC ENGINES (WITH OPTION TWO VISUAL FORENSICS)
 # -----------------------------------------------------------------------------
-# DETECTION & FORENSIC ENGINES (DIRECT FAKE SCORE LOGIC - NO INVERTED AVERAGING)
+# DETECTION & FORENSIC ENGINES (WHITELIST -70% / BLACKLIST +40% - NO REVERSE)
 # -----------------------------------------------------------------------------
-SMS_FAKE_KEYWORDS = [
-    "congratulations", "lottery", "prize", "free", "claim", "bank details",
-    "otp", "hurry", "last date", "account blocked", "kyc", "work from home",
-    "earn", "registration fee", "gpay", "electricity", "power cut", "disconnection",
-    "apk", "bit.ly", "tinyurl", "reward", "cashback", "won", "100% free",
-    "free recharge", "ఉచిత", "లాటరీ", "గెలుచుకున్నారు"
-]
+SMS_REAL_DOMAINS = ["tcsion.com", "tcsion", "iondsk", "sbi.co.in", "uidai.gov.in", "irctc.co.in", "amazon.in/gp/", "amazon.com/gp/"]
+SMS_FAKE_BAD = ["congratulations you won", "won rs", "lottery", "free prize", "bank details + otp", "send otp", "free money", "double money", "bit.ly", "tinyurl", "/bank-secure", "sbi-kyc-update", "free-laptop", "free-money", "prize claim", "send bank details"]
+SMS_FAKE_WORDS = ["kyc expired", "account blocked", "electricity disconnected", "parcel pending", "delivery fee", "instant loan", "registration fee", "processing fee", "congratulations", "free recharge", "100% free", "లాటరీ", "గెలుచుకున్నారు", "ఉచితం"]
 
-EMAIL_FAKE_KEYWORDS = [
-    "account suspended", "verify immediately", "enter password", "prize",
-    "processing fee", "secure-verify", "suspended", "urgent action required",
-    "click here to login", "unauthorized access", "update payment", "mailbox full",
-    "tax refund", "security alert"
-]
+EMAIL_REAL_DOMAINS = ["amazon.com/gp/", "amazon.in/gp/", "hdfcbank.com", "onlinesbi.sbi", "irctc.co.in", "isro.gov.in", "tcsion.com", "noreply@", "no-reply@", "linkedin.com", "github.com", "alits.ac.in"]
+EMAIL_FAKE_BAD = ["account suspended within 24 hours", "verify immediately", "enter password and otp", "enter your net banking", "prize $", "google foundation prize", "processing fee $", "payment failed update now", "secure-verify", "hdfc-secure-verify", "bit.ly", "free-prize", "account blocked update kyc", "bank details + otp", "lottery"]
+EMAIL_FAKE_WORDS = ["account suspended", "urgent action required", "unauthorized access", "update payment", "mailbox full", "tax refund", "security alert"]
 
-NEWS_FAKE_KEYWORDS = [
-    "free laptop", "free money", "share to whatsapp", "cures cancer",
-    "breaking news", "whatsapp forward", "celebrity died", "miracle cure",
-    "nasa confirms", "shocking secret", "you won't believe", "banned by govt",
-    "earth dark", "secret deal", "రాజీనామా", "షాకింగ్"
-]
+NEWS_REAL_SRC = ["isro official", "the hindu", "bcci official", "wikipedia", "pslv-c", "satish dhawan", "isro.gov.in", "nasa.gov", "bbc.com", "reuters.com", "timesofindia.indiatimes.com", "indianexpress.com", "eenadu", "ndtv"]
+NEWS_FAKE_BAD = ["free laptop for all college students", "free money rs 50000", "share to all whatsapp groups", "no need to study government giving free", "cures cancer in 3 days", "doctors hiding this secret", "share to 10 people bad luck", "whatsapp university", "free money ap government", "government giving free money", "apply now at http://free", "free-laptop-scheme", "miracle cure", "nasa confirms earth dark"]
+NEWS_FAKE_WORDS = ["free laptop", "free money", "share to whatsapp", "cures cancer", "breaking news", "whatsapp forward", "celebrity died", "shocking secret", "you won't believe", "banned by govt", "రాజీనామా", "షాకింగ్"]
 
 def analyze_sms_scam(text):
-    t_low = text.lower()
-    matched = {}
+    t = text.lower()
+    is_real_domain = any(d in t for d in SMS_REAL_DOMAINS)
+    bad_count = sum(1 for b in SMS_FAKE_BAD if b in t)
+    word_count = sum(1 for w in SMS_FAKE_WORDS if w in t)
     
-    # Check for scam keywords (each word adds 18%)
-    for kw in SMS_FAKE_KEYWORDS:
-        if kw in t_low:
-            matched[kw] = 18
-
-    # Link check (adds 30%)
-    has_link = bool(re.search(r'http[s]?://|bit\.ly|tinyurl|\.apk|www\.|t\.co', t_low))
-    # Urgency check (adds 15%)
-    has_urgency = any(w in t_low for w in ["immediately", "tonight", "urgent", "hurry", "24 hours", "last date", "today only", "now"])
-
-    # Base score calculated directly from threat vectors
-    kw_count = len(matched)
-    kw_contrib = kw_count * 18
-    link_contrib = 30 if has_link else 0
-    urgency_contrib = 15 if has_urgency else 0
-
-    # Legit OTP / Transaction exception: if OTP message without scam words or links
-    is_pure_legit_otp = ("otp" in t_low and not has_link and not any(w in t_low for w in ["lottery", "prize", "congratulations", "won", "share", "free"]))
+    score = bad_count * 40 + word_count * 20
+    if "urgent" in t and bad_count > 0: score += 20
+    if "http" in t and not is_real_domain and bad_count > 0: score += 15
     
-    if is_pure_legit_otp:
-        fake_score = random.randint(8, 15)
-        matched.clear()
-    else:
-        raw_score = kw_contrib + link_contrib + urgency_contrib
-        if raw_score >= 60:
-            fake_score = min(98, max(85, raw_score))
-        elif raw_score >= 35:
-            fake_score = min(84, max(65, raw_score))
-        elif raw_score > 0:
-            fake_score = max(25, raw_score)
+    if is_real_domain and bad_count == 0: 
+        score = max(0, score - 70)
+    elif is_real_domain and bad_count > 0: 
+        score = max(0, score - 30)
+    
+    score = min(98, score)
+
+    if is_real_domain and bad_count == 0 and word_count == 0:
+        score = random.randint(5, 10)
+    elif bad_count == 0 and word_count == 0:
+        if "otp" in t and not any(w in t for w in ["won", "lottery", "free"]):
+            score = random.randint(8, 14)
         else:
-            fake_score = random.randint(8, 16)
+            score = random.randint(10, 18)
 
-    # Sub-component percentage metrics for visual breakdown
-    kw_s = min(98, kw_contrib) if kw_count > 0 else 5
-    lnk_s = 90 if has_link else 8
-    urg_s = 85 if has_urgency else 10
-    snd_s = 88 if ("bank" in t_low or "pay" in t_low or "gpay" in t_low) and (has_link or kw_count > 0) else 12
+    matched = {}
+    for b in SMS_FAKE_BAD:
+        if b in t: matched[b] = 40
+    for w in SMS_FAKE_WORDS:
+        if w in t and w not in matched: matched[w] = 20
 
-    # Strict Decision Threshold:
-    # fake_score >= 60: FAKE (Red - 85-98%)
-    # fake_score >= 35: SUSPICIOUS (Orange / Threat)
-    # else: REAL (Green - 80-92% Safe)
-    is_fake = fake_score >= 60
+    if score >= 60:
+        is_fake = True
+        fake_score = min(95, max(85, score + 5))
+    elif score >= 30:
+        is_fake = False
+        fake_score = score + 10
+    else:
+        is_fake = False
+        fake_score = score
+
+    kw_s = min(98, bad_count * 40 + word_count * 20) if (bad_count > 0 or word_count > 0) else 8
+    lnk_s = 90 if ("http" in t and not is_real_domain) else (10 if is_real_domain else 8)
+    urg_s = 85 if ("urgent" in t or "immediately" in t) else 10
+    snd_s = 10 if is_real_domain else (88 if bad_count > 0 else 12)
 
     reasons = []
-    if matched:
-        reasons.append(f"Scam keywords: {', '.join(list(matched.keys())[:4])}")
-    if has_link:
-        reasons.append("Unverified link or short URL detected")
-    if has_urgency:
-        reasons.append("Urgency trigger detected")
+    if bad_count > 0 or word_count > 0:
+        reasons.append(f"Blacklisted threat terms detected ({bad_count + word_count})")
+    if is_real_domain:
+        reasons.append("Official whitelisted domain verified")
 
     return is_fake, fake_score, kw_s, lnk_s, urg_s, snd_s, reasons, matched
 
 def analyze_email_phish(sender, subject, body):
-    full = f"{sender} {subject} {body}".lower()
+    text = f"{sender} {subject} {body}"
+    t = text.lower()
+    is_real = any(d in t for d in EMAIL_REAL_DOMAINS)
+    bad = sum(1 for b in EMAIL_FAKE_BAD if b in t)
+    word_count = sum(1 for w in EMAIL_FAKE_WORDS if w in t)
+
+    score = bad * 30 + word_count * 18 + (15 if "http" in t and not is_real else 0)
+    if is_real and bad == 0: 
+        score = max(0, score - 60)
+    elif is_real and bad > 0:
+        score = max(0, score - 30)
+
+    score = min(97, score)
+    if is_real and bad == 0 and word_count == 0:
+        score = random.randint(5, 10)
+    elif bad == 0 and word_count == 0:
+        score = random.randint(10, 18)
+
     matched = {}
-    
-    # Check for phishing keywords (each word adds 18%)
-    for kw in EMAIL_FAKE_KEYWORDS:
-        if kw in full:
-            matched[kw] = 18
+    for b in EMAIL_FAKE_BAD:
+        if b in t: matched[b] = 30
+    for w in EMAIL_FAKE_WORDS:
+        if w in t and w not in matched: matched[w] = 18
 
-    spoofed = ("alits" in sender.lower() and "@alits.ac.in" not in sender.lower()) or any(d in sender.lower() for d in ["@verify", "@account", "@gift", "@support-security", "@secure"])
-    has_link = bool(re.search(r'http[s]?://|bit\.ly|tinyurl|click here|login|verify', full))
-    has_urgency = any(w in full for w in ["immediately", "suspended", "urgent", "24 hours", "action required"])
-
-    kw_count = len(matched)
-    kw_contrib = kw_count * 18
-    link_contrib = 30 if has_link else 0
-    urgency_contrib = 15 if has_urgency else 0
-    spoof_contrib = 35 if spoofed else 0
-
-    raw_score = kw_contrib + link_contrib + urgency_contrib + spoof_contrib
-    if raw_score >= 60:
-        fake_score = min(98, max(85, raw_score))
-    elif raw_score >= 35:
-        fake_score = min(84, max(65, raw_score))
-    elif raw_score > 0:
-        fake_score = max(25, raw_score)
+    if score >= 55:
+        is_fake = True
+        fake_score = min(96, max(85, score + 8))
+    elif score >= 28:
+        is_fake = False
+        fake_score = score + 12
     else:
-        fake_score = random.randint(8, 16)
+        is_fake = False
+        fake_score = score
 
-    is_fake = fake_score >= 60
-
-    dom_s = 95 if spoofed else 10
-    urg_s = 85 if has_urgency else 10
-    lnk_s = 90 if has_link else 8
-    send_m = 90 if spoofed else 10
+    dom_s = 10 if is_real else (90 if bad > 0 else 12)
+    urg_s = 85 if any(u in t for u in ["suspended", "urgent", "24 hours", "immediately"]) else 10
+    lnk_s = 90 if ("http" in t and not is_real) else 10
+    send_m = 10 if is_real else (88 if bad > 0 else 12)
 
     reasons = []
-    if spoofed:
-        reasons.append("Sender domain mismatch or unverified service")
-    if matched:
-        reasons.append(f"Phishing words: {', '.join(list(matched.keys())[:4])}")
-    if has_link:
-        reasons.append("Credential harvesting or login link detected")
+    if bad > 0 or word_count > 0:
+        reasons.append(f"Phishing indicators detected: {', '.join(list(matched.keys())[:3])}")
+    if is_real:
+        reasons.append("Official sender domain whitelisted")
 
     return is_fake, fake_score, dom_s, urg_s, lnk_s, send_m, reasons, matched
 
 def analyze_news_truth(text):
-    t_low = text.lower()
+    t = text.lower()
+    is_real = any(r in t for r in NEWS_REAL_SRC)
+    bad = sum(1 for b in NEWS_FAKE_BAD if b in t)
+    word_count = sum(1 for w in NEWS_FAKE_WORDS if w in t)
+
+    score = bad * 30 + word_count * 18 + (20 if "http://free" in t or "free-laptop" in t else 0)
+    if is_real and bad == 0: 
+        score = max(0, score - 70)
+    elif is_real and bad > 0:
+        score = max(0, score - 30)
+
+    score = min(96, score)
+    if is_real and bad == 0 and word_count == 0:
+        score = random.randint(5, 10)
+    elif bad == 0 and word_count == 0:
+        score = random.randint(10, 18)
+
     matched = {}
-    
-    for kw in NEWS_FAKE_KEYWORDS:
-        if kw in t_low:
-            matched[kw] = 18
+    for b in NEWS_FAKE_BAD:
+        if b in t: matched[b] = 30
+    for w in NEWS_FAKE_WORDS:
+        if w in t and w not in matched: matched[w] = 18
 
-    reliable_sources = ["the hindu", "eenadu", "bbc", "reuters", "pib", "official", "ndtv", "times of india"]
-    has_rel = any(r in t_low for r in reliable_sources)
-    has_link = bool(re.search(r'http[s]?://|bit\.ly|whatsapp', t_low))
-    has_viral = any(w in t_low for w in ["viral", "share", "forward", "forwarded", "shocking"])
-
-    kw_count = len(matched)
-    kw_contrib = kw_count * 18
-    link_contrib = 25 if has_link else 0
-    viral_contrib = 15 if has_viral else 0
-
-    if has_rel and kw_count == 0:
-        fake_score = random.randint(8, 15)
+    if score >= 50 and not is_real:
+        is_fake = True
+        fake_score = min(94, max(85, score + 10))
+    elif score >= 25:
+        is_fake = False
+        fake_score = score + 12
     else:
-        raw_score = kw_contrib + link_contrib + viral_contrib
-        if raw_score >= 60:
-            fake_score = min(98, max(85, raw_score))
-        elif raw_score >= 35:
-            fake_score = min(84, max(65, raw_score))
-        elif raw_score > 0:
-            fake_score = max(25, raw_score)
-        else:
-            fake_score = random.randint(8, 16)
+        is_fake = False
+        fake_score = score
 
-    is_fake = fake_score >= 60
-
-    sens_s = min(98, kw_contrib) if kw_count > 0 else 8
-    no_src = 15 if has_rel else 85
-    fact_s = 88 if kw_count > 0 else 12
-    claim_s = 85 if (has_viral or has_link) else 10
+    sens_s = min(98, bad * 30 + word_count * 18) if (bad > 0 or word_count > 0) else 8
+    no_src = 12 if is_real else 85
+    fact_s = 88 if bad > 0 else 12
+    claim_s = 85 if ("whatsapp" in t or "free" in t) else 10
 
     reasons = []
-    if matched:
-        reasons.append(f"Unverified claims: {', '.join(list(matched.keys())[:4])}")
-    if not has_rel:
-        reasons.append("No verified credible journalistic source found")
+    if bad > 0 or word_count > 0:
+        reasons.append(f"Viral fake claims detected: {', '.join(list(matched.keys())[:3])}")
+    if is_real:
+        reasons.append("Official journalism / agency source verified")
 
     return is_fake, fake_score, sens_s, no_src, fact_s, claim_s, reasons, matched
 
@@ -616,7 +604,7 @@ def render_scan_result_card(res, key_type):
         th_bg = "rgba(239,68,68,0.12)"
         th_bd = "#ef4444"
         th_tit = f"🔴 FAKE {key_type.upper()} / SCAM - {sc}% Scam Threat"
-    elif sc >= 35:
+    elif sc >= 30:
         th_bg = "rgba(249,115,22,0.12)"
         th_bd = "#f97316"
         th_tit = f"🟠 SUSPICIOUS {key_type.upper()} - {sc}% Potential Risk"
