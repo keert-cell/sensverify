@@ -609,8 +609,30 @@ def render_translator_pill():
     curr_lang = st.session_state.get("lang", "English")
     idx = languages.index(curr_lang) if curr_lang in languages else 0
     
-    col_empty, col_pill = st.columns([8, 2.5])
-    with col_pill:
+    if not st.session_state.get("logged_in", False):
+        st.markdown("""
+        <style>
+        div[data-testid="stSelectbox"]:has(input[aria-label="Language"]),
+        div[data-testid="stSelectbox"]:has(div:contains("English")) {
+            position: fixed !important;
+            top: 14px !important;
+            right: 18px !important;
+            width: 125px !important;
+            z-index: 99999 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        chosen = st.selectbox(
+            "Language",
+            options=languages,
+            index=idx,
+            label_visibility="collapsed",
+            key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
+        )
+        if chosen != st.session_state["lang"]:
+            st.session_state["lang"] = chosen
+            st.rerun()
+    else:
         chosen = st.selectbox(
             "Language",
             options=languages,
@@ -952,8 +974,6 @@ def render_floating_assistant():
 # PART 1: WELCOME PAGE - PAGE 1 - ULTRA CLEAN (NO FOOTER TEXTS)
 # =============================================================================
 if not st.session_state["logged_in"] and st.session_state["page"] == 1:
-    render_translator_pill()
-    
     _, col_center, _ = st.columns([1, 1.2, 1])
     
     with col_center:
@@ -973,19 +993,19 @@ if not st.session_state["logged_in"] and st.session_state["page"] == 1:
             </div>
         """, unsafe_allow_html=True)
         
-        # Mobile Input with +91 prefix
+        # Mobile Input with +91 prefix - max_chars=10 strictly for 0/10 counter
         mobile_in = st.text_input(
-            "Mobile",
-            placeholder=f"+91  {t('enter_mobile')}",
+            "+91 Enter Mobile Number",
+            placeholder="+91 Enter Mobile Number",
             label_visibility="collapsed",
-            max_chars=14,
-            key="wel_mob_in"
+            max_chars=10,
+            key="mobile_input"
         )
         
         # Extract digits only
         clean_mob = re.sub(r"[^\d]", "", mobile_in)
-        if clean_mob.startswith("91") and len(clean_mob) == 12:
-            clean_mob = clean_mob[2:]
+        if len(clean_mob) != 10 and len(clean_mob) != 0:
+            st.caption("Please enter 10 digits")
             
         # Continue Button - Enabled only when 10 digits entered
         is_valid_10 = (len(clean_mob) == 10)
@@ -1002,13 +1022,12 @@ if not st.session_state["logged_in"] and st.session_state["page"] == 1:
         st.markdown("</div>", unsafe_allow_html=True)
         
     render_floating_assistant()
+    render_translator_pill()
 
 # =============================================================================
 # PART 2: PAGE 2 - NAME + EMAIL + GOOGLE (ONLY "or")
 # =============================================================================
 elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
-    render_translator_pill()
-    
     _, col_center, _ = st.columns([1, 1.2, 1])
     
     with col_center:
@@ -1062,7 +1081,6 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
             st.session_state["logged_in"] = True
             st.rerun()
             
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         if st.button("← Back", use_container_width=True):
             st.session_state["page"] = 1
             st.rerun()
@@ -1070,6 +1088,7 @@ elif not st.session_state["logged_in"] and st.session_state["page"] == 2:
         st.markdown("</div>", unsafe_allow_html=True)
         
     render_floating_assistant()
+    render_translator_pill()
 
 # =============================================================================
 # PART 3 & 4: DEFENSE GRID (AFTER LOGIN)
