@@ -461,13 +461,20 @@ st.markdown("""
     
     /* Hide default Streamlit decoration headers, toolbars, empty boxes */
     header[data-testid="stHeader"] {
-        display: none !important;
+        background: transparent !important;
+        height: 2.5rem !important;
     }
     div[data-testid="stToolbar"] {
         display: none !important;
     }
     div[data-testid="stDecoration"] {
         display: none !important;
+    }
+    [data-testid="collapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        color: white !important;
+        z-index: 99999 !important;
     }
     #MainMenu {
         visibility: hidden !important;
@@ -616,7 +623,7 @@ if "chat_messages" not in st.session_state:
 # -----------------------------------------------------------------------------
 # TOP-RIGHT TRANSLATOR PILL COMPONENT (11 LANGUAGES)
 # -----------------------------------------------------------------------------
-def render_translator_pill():
+def render_translator_pill(key_suffix=""):
     languages = list(TRANSLATOR.keys())
     curr_lang = st.session_state.get("lang", "English")
     idx = languages.index(curr_lang) if curr_lang in languages else 0
@@ -625,7 +632,7 @@ def render_translator_pill():
         options=languages,
         index=idx,
         label_visibility="collapsed",
-        key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}"
+        key=f"trans_sel_{st.session_state.get('page', 1)}_{st.session_state.get('logged_in', False)}_{key_suffix}"
     )
     if chosen != st.session_state["lang"]:
         st.session_state["lang"] = chosen
@@ -634,35 +641,85 @@ def render_translator_pill():
 # -----------------------------------------------------------------------------
 # REUSABLE SINGLE CAMERA BOX (360PX BLACK VIEWPORT, WHITE CIRCLE, FLIP ICON)
 # -----------------------------------------------------------------------------
-def single_camera_box(key_prefix):
-    cam_html = f"""
-    <div style="width:100%;max-width:360px;margin:0 auto;">
-        <style>
-        .box-{key_prefix}{{position:relative;width:360px;height:360px;background:#000;border-radius:16px;overflow:hidden;margin:0 auto;box-shadow:0 10px 30px rgba(0,0,0,0.5);}}
-        #video-{key_prefix}{{width:100%;height:100%;object-fit:cover;display:block}}
-        .cap-{key_prefix}{{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:60px;height:60px;border-radius:50%;background:white;border:4px solid rgba(255,255,255,0.9);cursor:pointer;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,0.4);}}
-        .flip-{key_prefix}{{position:absolute;bottom:22px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.9);border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,0.3);}}
-        </style>
-        <div class="box-{key_prefix}">
-            <video id="video-{key_prefix}" autoplay playsinline></video>
-            <button class="cap-{key_prefix}" id="cap-{key_prefix}"></button>
-            <button class="flip-{key_prefix}" id="flip-{key_prefix}">🔄</button>
-        </div>
-        <canvas id="canvas-{key_prefix}" style="display:none"></canvas>
-        <img id="prev-{key_prefix}" style="width:360px;border-radius:12px;margin-top:8px;display:none" />
-        <script>
-        let facing="user"; let s=null;
-        const v=document.getElementById('video-{key_prefix}');
-        const c=document.getElementById('canvas-{key_prefix}');
-        const p=document.getElementById('prev-{key_prefix}');
-        async function start(fc){{ if(s) s.getTracks().forEach(t=>t.stop()); try{{ s=await navigator.mediaDevices.getUserMedia({{video:{{facingMode:fc}}}}); v.srcObject=s; }}catch(e){{}} }}
-        document.getElementById('flip-{key_prefix}').onclick=()=>{{ facing=facing=='user'?'environment':'user'; start(facing); }};
-        document.getElementById('cap-{key_prefix}').onclick=()=>{{ c.width=v.videoWidth; c.height=v.videoHeight; c.getContext('2d').drawImage(v,0,0); p.src=c.toDataURL('image/jpeg'); p.style.display='block'; }};
-        start(facing);
-        </script>
-    </div>
+def single_camera_box(shield_name):
     """
-    components.html(cam_html, height=420)
+    Single camera box - 360px black box - White circle center - Small flip icon bottom-right - No second Take Photo bar - Works for SMS, Email, News, Universal
+    shield_name: "sms", "email", "news", "universal", "document"
+    """
+    st.markdown("""
+    <style>
+    /* Single camera box - 360px black box - Center */
+    div[data-testid="stCameraInput"] {
+        width: 360px !important;
+        height: 360px !important;
+        margin: 0 auto !important;
+        background: #000000 !important;
+        border-radius: 20px !important;
+        border: 2px solid #00D4FF !important;
+        overflow: hidden !important;
+        position: relative !important;
+    }
+    div[data-testid="stCameraInput"] video {
+        width: 360px !important;
+        height: 360px !important;
+        object-fit: cover !important;
+        background: #000000 !important;
+    }
+    div[data-testid="stCameraInput"] img {
+        width: 360px !important;
+        height: 360px !important;
+        object-fit: cover !important;
+    }
+    /* White circle button - Center */
+    div[data-testid="stCameraInput"] button:first-of-type {
+        background: white !important;
+        width: 60px !important;
+        height: 60px !important;
+        border-radius: 50% !important;
+        border: 4px solid rgba(255,255,255,0.8) !important;
+        position: absolute !important;
+        bottom: 20px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        z-index: 10 !important;
+        box-shadow: 0 0 20px rgba(255,255,255,0.5) !important;
+    }
+    /* Hide second Take Photo bar - Only one circle */
+    div[data-testid="stCameraInput"] button:nth-of-type(2) {
+        display: none !important;
+    }
+    div[data-testid="stCameraInput"] div:last-child button {
+        display: none !important;
+    }
+    /* Small flip icon bottom-right - 🔄 */
+    div[data-testid="stCameraInput"]::after {
+        content: "🔄";
+        position: absolute;
+        bottom: 15px;
+        right: 15px;
+        font-size: 20px;
+        background: rgba(0,0,0,0.6);
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 11;
+        pointer-events: none;
+    }
+    /* Hide default Streamlit camera controls */
+    div[data-testid="stCameraInput"] > div > button {
+        background: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Single camera input with unique key per shield - Prevents stuck
+    camera_key = f"single_camera_{shield_name}_360px_unique"
+    captured = st.camera_input(f"📸 Capture for {shield_name.upper()} Shield - 360px Black Box", key=camera_key, label_visibility="collapsed")
+    
+    return captured
 
 # =============================================================================
 # CONSOLIDATED MEGA WHITELIST (200+ DOMAINS & VERIFIED PATTERNS)
@@ -913,7 +970,10 @@ def render_floating_assistant():
 # =============================================================================
 if not st.session_state["logged_in"]:
     with st.sidebar:
-        render_translator_pill()
+        render_translator_pill("side")
+    top_l, top_r = st.columns([4.5, 1.5])
+    with top_r:
+        render_translator_pill("top")
 
 if not st.session_state["logged_in"] and st.session_state["page"] == 1:
     _, col_center, _ = st.columns([1, 1.2, 1])
@@ -1170,7 +1230,13 @@ elif st.session_state["logged_in"]:
                                 st.session_state["sms_result"] = (result, conf, breakdown, matched, expl, ext_txt)
                                 st.rerun()
                     with p_col2:
-                        single_camera_box("sms")
+                        sms_captured = single_camera_box("sms")
+                        if sms_captured:
+                            ext_txt, _ = extract_photo_text(sms_captured)
+                            result, conf, breakdown, matched, expl = detect_sms(ext_txt)
+                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state["sms_result"] = (result, conf, breakdown, matched, expl, ext_txt)
+                            st.rerun()
                         
                     if st.session_state.get("sms_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["sms_result"]
@@ -1233,7 +1299,13 @@ elif st.session_state["logged_in"]:
                                 st.session_state["email_result"] = (result, conf, breakdown, matched, expl, ext_txt)
                                 st.rerun()
                     with p_col2:
-                        single_camera_box("email")
+                        email_captured = single_camera_box("email")
+                        if email_captured:
+                            ext_txt, _ = extract_photo_text(email_captured)
+                            result, conf, breakdown, matched, expl = detect_email(ext_txt)
+                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state["email_result"] = (result, conf, breakdown, matched, expl, ext_txt)
+                            st.rerun()
                         
                     if st.session_state.get("email_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["email_result"]
@@ -1296,7 +1368,13 @@ elif st.session_state["logged_in"]:
                                 st.session_state["news_result"] = (result, conf, breakdown, matched, expl, ext_txt)
                                 st.rerun()
                     with p_col2:
-                        single_camera_box("news")
+                        news_captured = single_camera_box("news")
+                        if news_captured:
+                            ext_txt, _ = extract_photo_text(news_captured)
+                            result, conf, breakdown, matched, expl = detect_news(ext_txt)
+                            save_scan("Camera Capture", ext_txt[:60], result, conf, st.session_state["user_mobile"], st.session_state["user_name"])
+                            st.session_state["news_result"] = (result, conf, breakdown, matched, expl, ext_txt)
+                            st.rerun()
                         
                     if st.session_state.get("news_result"):
                         res_val, conf_val, bd_val, m_val, exp_val, txt_val = st.session_state["news_result"]
