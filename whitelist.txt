@@ -1,0 +1,173 @@
+# SensVerify Mega Whitelist - 200+ Verified Trusted Domains & Patterns
+
+# TCS + IT + CORPORATE
+tcsion.com
+g01.tcsion.com
+q01.tcsion.com
+201tcsion.com
+tcsion
+TCSiON
+iondsk
+tcs.com
+avanade.com
+accenture.com
+wipro.com
+infosys.com
+techmahindra.com
+hcltech.com
+nextstep.tcs.com
+careers.tcs.com
+ep online application
+user id
+allocation has been updated
+dear candidate
+regards, tcsion
+cognizant.com
+capgemini.com
+ibm.com
+microsoft.com
+google.com
+apple.com
+oracle.com
+cisco.com
+
+# NPTEL + SWAYAM + EDUCATION
+nptel.ac.in
+swayam.gov.in
+onlinecourses.nptel.ac.in
+swayam2.ac.in
+nptel
+NPTEL
+swayam
+noc26
+noc26-ce162
+onlinecours
+sustainable materials
+green buildings
+final feedback form
+feedback form
+dear students
+we are glad that you have attended
+iit
+iit madras
+iit bombay
+iit delhi
+iit kanpur
+iit kharagpur
+iisc.ac.in
+nit.ac.in
+alits.ac.in
+aicte-india.org
+ugc.ac.in
+coursera.org
+edx.org
+udemy.com
+
+# BANKING + FINANCIAL SERVICES
+sbi.co.in
+onlinesbi.sbi
+onlinesbi.com
+hdfcbank.com
+icicibank.com
+axisbank.com
+kotak.com
+pnb.co.in
+bankofbaroda.com
+canarabank.com
+unionbankofindia.co.in
+indusind.com
+yesbank.in
+idfcfirstbank.com
+rbi.org.in
+npci.org.in
+paytm.com
+phonepe.com
+bhimupi.org.in
+
+# GOVERNMENT + PUBLIC SECTOR
+uidai.gov.in
+incometax.gov.in
+gst.gov.in
+passportindia.gov.in
+isro.gov.in
+drdo.gov.in
+gov.in
+.gov.in
+india.gov.in
+epfindia.gov.in
+digilocker.gov.in
+mygov.in
+cowin.gov.in
+nvsp.in
+eci.gov.in
+irctc.co.in
+indianrailways.gov.in
+licindia.in
+upsc.gov.in
+ssc.nic.in
+
+# E-COMMERCE + LOGISTICS
+amazon.com/gp/
+amazon.in/gp/
+amazon.in
+amazon.com
+flipkart.com
+myntra.com
+ajio.com
+meesho.com
+tatacliq.com
+zomato.com
+swiggy.com
+makemytrip.com
+delhivery.com
+bluedart.com
+indiapost.gov.in
+
+# REAL NEWS + VERIFIED MEDIA
+thehindu.com
+thehindu
+eenadu.net
+eenadu
+bbc.com
+bbc.co.uk
+reuters.com
+ndtv.com
+timesofindia.indiatimes.com
+indianexpress.com
+hindustantimes.com
+livemint.com
+economictimes.indiatimes.com
+aniin.com
+pib.gov.in
+press release
+official statement
+pslv
+isro official
+satish dhawan space centre
+
+# COMMON REAL SYSTEM PATTERNS
+dear candidate
+dear students
+dear customer
+your application has been submitted
+your application form
+user id
+ep online application
+allocation has been updated in system
+we are glad that you have attended
+feedback form
+your esteemed input
+regards,
+your otp is
+payment successful
+transaction successful
+thank you for
+we have received your
+order confirmed
+scheduled maintenance
+account statement
+tax invoice
+booking confirmed
+hall ticket released
+admit card available
+result announced
