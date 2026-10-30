@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 import sqlite3
 import random
@@ -371,6 +372,12 @@ if "chatbot_history" not in st.session_state:
 
 if "chatbot_open" not in st.session_state:
     st.session_state["chatbot_open"] = False
+
+if "camera_facing" not in st.session_state:
+    st.session_state.camera_facing = "user"  # user = front, environment = back
+
+def toggle_camera():
+    st.session_state.camera_facing = "environment" if st.session_state.camera_facing == "user" else "user"
 
 # Auto-refresh interval 3000ms strictly for live clock/monitoring
 if st.session_state.get("logged_in", False):
@@ -839,14 +846,14 @@ elif st.session_state["logged_in"]:
                     st.session_state["is_admin"] = True
                     st.rerun()
                 else:
-                    pin = st.text_input("Enter Admin PIN", placeholder="Hint: 1234", type="password", key="admin_pin")
-                    st.caption("Default PIN: 1234 - For Admin Access")
+                    pin = st.text_input("Enter Admin PIN", placeholder="••••", type="password", key="admin_pin")
+                    st.caption("Admin access only")
                     if st.button("Verify PIN"):
                         if pin == "1234":
                             st.session_state["is_admin"] = True
                             st.rerun()
                         else:
-                            st.error("Wrong PIN - Try 1234")
+                            st.error("Invalid Admin PIN")
         else:
             st.session_state["is_admin"] = False
 
@@ -943,26 +950,38 @@ elif st.session_state["logged_in"]:
 
     st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
-    # Helper function for Photo / Document / Poster Universal Check with Front & Back Camera
+    # Helper function for Photo / Document / Poster Universal Check with WhatsApp Flip Model
     def render_universal_photo_tab(shield_name, key_prefix, analyze_fn, save_scan_label):
-        st.markdown(f"""
-            <div style="border:2px dashed rgba(255,255,255,0.2); border-radius:16px; background:rgba(255,255,255,0.05); padding:20px; text-align:center; margin-bottom:14px;">
-                <div style="font-size:28px;">📸</div>
-                <div style="font-size:15px; font-weight:700; color:#FFFFFF;">{t('upload_any')} - {shield_name}</div>
-                <div style="font-size:12px; color:#94A3B8;">{t('upload_sub')}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 1.4])
 
-        col_opt1, col_opt2, col_opt3 = st.columns(3)
-        with col_opt1:
-            st.markdown(f"**{t('upload_file_title')}**")
-            up_file = st.file_uploader(f"Upload - {shield_name}", type=["jpg", "jpeg", "png", "pdf"], key=f"up_{key_prefix}", label_visibility="collapsed")
-        with col_opt2:
-            st.markdown(f"**{t('front_cam_title')}**")
-            front_cam = st.camera_input(t("front_cam_title"), key=f"front_camera_{key_prefix}", label_visibility="collapsed")
-        with col_opt3:
-            st.markdown(f"**{t('back_cam_title')}**")
-            back_cam = st.camera_input(t("back_cam_title"), key=f"back_camera_{key_prefix}", label_visibility="collapsed")
+        with col1:
+            st.markdown("#### 📤 Upload Any Photo / Document / Poster")
+            up_file = st.file_uploader(
+                f"Upload - {shield_name}",
+                type=["jpg", "png", "pdf", "jpeg"],
+                label_visibility="collapsed",
+                key=f"up_{key_prefix}"
+            )
+            st.caption("200MB per file • JPG, PNG, PDF")
+
+        with col2:
+            is_front = (st.session_state.get("camera_facing", "user") == "user")
+            cam_title = "Front - Selfie / Face View" if is_front else "Back - Document Clear Scan"
+            st.markdown(f"#### 📷 Camera - {cam_title}")
+
+            # Reverse button like Whatsapp
+            if st.button("🔄 Reverse Camera (Front ↔️ Back) - Whatsapp Style", use_container_width=True, key=f"flip_btn_{key_prefix}"):
+                toggle_camera()
+                st.rerun()
+
+            st.caption(f"Current: {'🤳 Front Camera - Selfie / Face View' if is_front else '📄 Back Camera - Document / Poster Clear'} | Click 🔄 to flip like Whatsapp video call")
+
+            # Camera input (switches key & facing label cleanly)
+            cam_photo = st.camera_input(
+                f"Camera Capture ({cam_title})",
+                key=f"cam_{key_prefix}_{st.session_state.get('camera_facing', 'user')}",
+                label_visibility="collapsed"
+            )
 
         st.markdown(f"<div style='font-size:11px; color:#94A3B8; margin-top:6px; margin-bottom:14px;'>💡 {t('camera_guidance')}</div>", unsafe_allow_html=True)
 
@@ -971,12 +990,9 @@ elif st.session_state["logged_in"]:
         if up_file is not None:
             active_media = up_file
             media_source_name = "Uploaded File"
-        elif front_cam is not None:
-            active_media = front_cam
-            media_source_name = "Front Camera Capture"
-        elif back_cam is not None:
-            active_media = back_cam
-            media_source_name = "Back Camera Capture"
+        elif cam_photo is not None:
+            active_media = cam_photo
+            media_source_name = f"Camera Capture ({'Front' if is_front else 'Back'})"
 
         # Black Preview Fix: When camera closed / none selected, show friendly info
         if active_media is None:
